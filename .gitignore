@@ -1,0 +1,40 @@
+# Virtual environment
+.venv/
+venv/
+
+# Model weights — large, downloaded separately, never committed
+models/*.gguf
+models/*.bin
+
+# llama.cpp runtime binaries — downloaded separately, platform-specific
+runtime/windows/*.exe
+runtime/windows/*.dll
+
+# Generated project content (this is a working directory, not source)
+workspace/*
+!workspace/.gitkeep
+
+# Generated ZIP artifacts
+artifacts/*.zip
+!artifacts/.gitkeep
+
+# Logs
+logs/*.log
+!logs/.gitkeep
+
+# Local overrides
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Editor/OS cruft
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+prompting
