@@ -1,0 +1,3 @@
+llama serve -m "models/qwen2.5-coder-7b-instruct-q4_k_m.gguf" -dev Vulkan1 -ngl 14 -t 8
+
+llama serve -m "D:\0 AMAAN MAIN\Codes and Tools\My Python & AI ML\AI\portable-usb-llm-agent\models\qwen2.5-coder-7b-instruct-q4_k_m.gguf" -dev Vulkan1 -ngl 14 -t 8
