@@ -1,8 +1,8 @@
 """
-Verifies the local environment is ready to run PortableCoder:
+Verifies the local environment is ready to run Portable USB LLM Agent:
   - Python version
   - llama-server.exe present in runtime/windows/
-  - Model file present in models/
+  - Model file present at MODEL_PATH (from .env / .env.example)
   - Free disk space on the drive this project lives on
   - nvidia-smi availability (optional — informational only)
 
@@ -19,10 +19,33 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = ROOT / "models"
 RUNTIME_EXE = ROOT / "runtime" / "windows" / "llama-server.exe"
-EXPECTED_MODEL = MODELS_DIR / "qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+ENV_PATH = ROOT / ".env"
+ENV_EXAMPLE_PATH = ROOT / ".env.example"
 
 MIN_PYTHON = (3, 10)
-MIN_FREE_GB = 2.0  # headroom beyond the ~4.7 GB model + venv + generated projects
+MIN_FREE_GB = 2.0  # headroom beyond the model file + venv + generated projects
+
+
+def _load_env(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.is_file():
+        return values
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip()
+    return values
+
+
+def _configured_model_path() -> Path:
+    values = {**_load_env(ENV_EXAMPLE_PATH), **_load_env(ENV_PATH)}
+    raw = values.get("MODEL_PATH", "models\\your-model.gguf")
+    return ROOT / raw.replace("\\", "/")
+
+
+EXPECTED_MODEL = _configured_model_path()
 
 
 def check_python() -> tuple[bool, str]:
@@ -54,11 +77,11 @@ def check_llama_server() -> tuple[bool, str]:
 
 def check_model_file() -> tuple[bool, str]:
     if not EXPECTED_MODEL.is_file():
-        return False, f"Not found at {EXPECTED_MODEL}. See scripts/download_model.py."
+        return False, f"Not found at {EXPECTED_MODEL} (MODEL_PATH in .env). See scripts/download_model.py."
 
     size_gb = EXPECTED_MODEL.stat().st_size / 1e9
-    if size_gb < 3.5:
-        return False, f"File exists but is only {size_gb:.2f} GB — looks incomplete. Re-download."
+    if size_gb < 0.05:
+        return False, f"File exists but is only {size_gb:.3f} GB — looks incomplete or empty. Re-download."
     return True, f"Found, {size_gb:.2f} GB."
 
 
@@ -72,7 +95,7 @@ def check_disk_space() -> tuple[bool, str]:
 def check_nvidia_smi() -> tuple[bool, str]:
     exe = shutil.which("nvidia-smi")
     if not exe:
-        return True, "nvidia-smi not found on PATH (optional — only needed for GPU tuning)."
+        return True, "nvidia-smi not found on PATH (optional — only relevant for NVIDIA GPU tuning)."
 
     try:
         result = subprocess.run([exe, "--query-gpu=name,memory.total", "--format=csv,noheader"],
@@ -91,7 +114,7 @@ def main() -> int:
         ("nvidia-smi (optional)", check_nvidia_smi),
     ]
 
-    print("PortableCoder — Environment Verification")
+    print("Portable USB LLM Agent — Environment Verification")
     print("=" * 45)
 
     all_required_ok = True

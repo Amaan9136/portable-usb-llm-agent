@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 PortableCoder Project Contributor
+Copyright (c) 2026 Portable USB LLM Agent Project Contributor
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,10 +21,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ---
-NOTE: This license covers the PortableCoder source code in this repository
+NOTE: This license covers the Portable USB LLM Agent source code in this repository
 only. It does NOT cover:
-  - The Qwen2.5-Coder model weights, which are distributed separately under
-    their own license (check the model repository you download from).
+  - Any GGUF model weights you download and use with this project, which
+    are distributed separately under their own license (check the model
+    repository you download from).
   - llama.cpp, which you download separately and which has its own MIT
     license (see the llama.cpp repository).
   - Any code that this agent generates into workspace/ during use — that

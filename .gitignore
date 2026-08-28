@@ -38,3 +38,4 @@ __pycache__/
 Thumbs.db
 .DS_Store
 prompting
+repomix-output.*

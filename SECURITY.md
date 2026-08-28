@@ -1,4 +1,4 @@
-# SECURITY.md — PortableCoder
+# SECURITY.md — Portable USB LLM Agent
 
 ## Threat model
 

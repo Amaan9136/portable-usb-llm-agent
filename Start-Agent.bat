@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo.
-echo PortableCoder - starting agent API
+echo Portable USB LLM Agent - starting agent API
 echo.
 
 where py >nul 2>nul
@@ -43,8 +43,8 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 set "AGENT_PORT=8787"
-if exist ".env.example" (
-    for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env.example") do (
+if exist ".env" (
+    for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
         if "%%A"=="AGENT_PORT" if not "%%B"=="" set "AGENT_PORT=%%B"
     )
 )

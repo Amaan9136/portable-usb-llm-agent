@@ -1,5 +1,5 @@
 """
-PortableCoder agent API.
+Portable USB LLM Agent agent API.
 
 Runs a single sequential agent loop (planner -> implementer -> reviewer ->
 tester -> packager, per system_prompt.txt) against a locally-hosted
@@ -10,8 +10,8 @@ Two tool-invocation modes are supported:
   - native: uses OpenAI-style `tools`/`tool_calls` (default; works with
     llama.cpp's --jinja templated function calling for supported models).
   - fallback: if native tool calling proves unreliable with a given
-    model/template combo, set TOOL_MODE=fallback in .env.example to switch
-    to a constrained single-JSON-object-per-turn protocol, validated with
+    model/template combo, set TOOL_MODE=fallback in .env to switch to a
+    constrained single-JSON-object-per-turn protocol, validated with
     Pydantic (schemas.FallbackAction). This trades some flexibility for
     much higher reliability on smaller/quantized local models.
 """
@@ -36,6 +36,7 @@ from config import (
     LLM_MODEL,
     LOGS,
     MAX_AGENT_TURNS,
+    TOOL_MODE,
 )
 from schemas import AgentRequest, AgentResponse, FallbackAction, ToolCallTrace
 from tools import PathSecurityError, create_zip, list_files, read_file, run_command, safe_artifact_path, write_file
@@ -52,11 +53,9 @@ logging.basicConfig(
         logging.StreamHandler(),
     ],
 )
-logger = logging.getLogger("portablecoder")
+logger = logging.getLogger("Portable USB LLM Agent")
 
-TOOL_MODE = os.environ.get("TOOL_MODE", "native")  # "native" or "fallback"
-
-app = FastAPI(title="PortableCoder Agent", version="1.0.0")
+app = FastAPI(title="Portable USB LLM Agent Agent", version="1.0.0")
 client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
 
 with open(os.path.join(os.path.dirname(__file__), "system_prompt.txt"), encoding="utf-8") as f:

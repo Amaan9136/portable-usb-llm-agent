@@ -12,12 +12,35 @@ from __future__ import annotations
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+ENV_PATH = ROOT / ".env"
+ENV_EXAMPLE_PATH = ROOT / ".env.example"
+
+
+def _load_env(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.is_file():
+        return values
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip()
+    return values
+
+
+_ENV = {**_load_env(ENV_EXAMPLE_PATH), **_load_env(ENV_PATH)}
+MODEL_PORT = _ENV.get("MODEL_PORT", "8080")
+AGENT_PORT = _ENV.get("AGENT_PORT", "8787")
 
 MODEL_HEALTH_URLS = [
-    "http://127.0.0.1:8080/health",
-    "http://127.0.0.1:8080/v1/models",  # fallback: some builds lack /health
+    f"http://127.0.0.1:{MODEL_PORT}/health",
+    f"http://127.0.0.1:{MODEL_PORT}/v1/models",  # fallback: some builds lack /health
 ]
-AGENT_HEALTH_URL = "http://127.0.0.1:8787/health"
+AGENT_HEALTH_URL = f"http://127.0.0.1:{AGENT_PORT}/health"
 
 
 def _check(label: str, urls: list[str], timeout: float = 5.0) -> bool:
@@ -38,7 +61,7 @@ def _check(label: str, urls: list[str], timeout: float = 5.0) -> bool:
 
 
 def main() -> int:
-    print("PortableCoder — Smoke Test")
+    print("Portable USB LLM Agent — Smoke Test")
     print("=" * 40)
 
     model_ok = _check("Model server", MODEL_HEALTH_URLS)

@@ -1,15 +1,15 @@
 @echo off
 rem =====================================================================
-rem PortableCoder — Stop-All.bat
+rem Portable USB LLM Agent — Stop-All.bat
 rem
 rem Best-effort stop for llama-server.exe and the uvicorn agent process.
 rem This kills by process name/window title match, which is blunt — if
 rem you run other copies of these processes for unrelated work, close
-rem those manually first, or close each PortableCoder window directly
+rem those manually first, or close each Portable USB LLM Agent window directly
 rem with Ctrl+C instead of running this script.
 rem =====================================================================
 
-echo Stopping PortableCoder processes (best-effort)...
+echo Stopping Portable USB LLM Agent processes (best-effort)...
 
 taskkill /F /IM llama-server.exe >nul 2>nul
 if not errorlevel 1 (

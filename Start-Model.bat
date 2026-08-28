@@ -3,25 +3,25 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 rem =====================================================================
-rem PortableCoder — Start-Model.bat
+rem Portable USB LLM Agent — Start-Model.bat
 rem
 rem Starts llama-server bound to 127.0.0.1 ONLY. Never edit this to bind
 rem to 0.0.0.0 or a LAN-visible address — see SECURITY.md.
 rem
-rem Reads overrides from .env.example (KEY=VALUE, one per line, # comments
-rem allowed). Falls back to the defaults below if .env.example is absent or
-rem a key is missing. Command-line/user env vars set before calling this
-rem script take precedence over .env.example (matches agent\config.py).
+rem Reads overrides from .env (KEY=VALUE, one per line, # comments
+rem allowed). Falls back to the defaults below if .env is absent or a
+rem key is missing. Command-line/user env vars set before calling this
+rem script take precedence over .env (matches agent\config.py).
 rem =====================================================================
 
-set "MODEL_PATH=models\qwen2.5-coder-7b-instruct-q4_k_m.gguf"
-set "CONTEXT_SIZE=2048"
-set "GPU_LAYERS=12"
+set "MODEL_PATH=models\your-model.gguf"
+set "CONTEXT_SIZE=4096"
+set "GPU_LAYERS=0"
 set "CPU_THREADS=6"
 set "MODEL_PORT=8080"
 
-if exist ".env.example" (
-    for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env.example") do (
+if exist ".env" (
+    for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
         if not "%%A"=="" if not "%%B"=="" (
             set "%%A=%%B"
         )
@@ -29,7 +29,7 @@ if exist ".env.example" (
 )
 
 echo.
-echo PortableCoder - starting local model server
+echo Portable USB LLM Agent - starting local model server
 echo   Model:      %MODEL_PATH%
 echo   Context:    %CONTEXT_SIZE%
 echo   GPU layers: %GPU_LAYERS%
@@ -40,9 +40,10 @@ echo.
 if not exist "runtime\windows\llama-server.exe" (
     echo [ERROR] runtime\windows\llama-server.exe was not found.
     echo         See runtime\windows\README.txt for where to get it.
-    echo         Note: this project has been tested with both CUDA and
-    echo         Vulkan-enabled llama.cpp Windows builds - pick the one
-    echo         that matches the backend flag you plan to pass below.
+    echo         Any llama.cpp Windows build works - CPU-only, CUDA,
+    echo         Vulkan, or another backend - pick whichever matches
+    echo         your hardware and set EXTRA_ARGS in .env if that
+    echo         build needs a backend-specific flag.
     echo.
     pause
     exit /b 1
@@ -50,9 +51,10 @@ if not exist "runtime\windows\llama-server.exe" (
 
 if not exist "%MODEL_PATH%" (
     echo [ERROR] Model file not found at: %MODEL_PATH%
-    echo         Download it separately - see README.md, section
-    echo         "Downloading the model", and scripts\download_model.py.
-    echo         Expected filename: qwen2.5-coder-7b-instruct-q4_k_m.gguf
+    echo         Download it separately - see RUN.md, section
+    echo         "Downloading a model", and scripts\download_model.py.
+    echo         Set MODEL_PATH in .env to match whatever .gguf file
+    echo         and location you actually use.
     echo.
     pause
     exit /b 1
@@ -61,20 +63,14 @@ if not exist "%MODEL_PATH%" (
 rem ---------------------------------------------------------------------
 rem GPU BACKEND NOTE
 rem ---------------------------------------------------------------------
-rem This project targets CUDA as the primary backend (see README.md).
-rem   - CUDA builds:   no extra flag needed; GPU layers use CUDA by default
-rem                    once you've placed a CUDA-enabled llama-server.exe
-rem                    in runtime\windows\.
-rem   - Vulkan builds: documented as a working fallback for this hardware
-rem                    profile (RTX 3050 Laptop, 4GB VRAM). Some builds
-rem                    auto-select Vulkan; others need a device flag such
-rem                    as "-dev Vulkan1" (check
-rem                    `llama-server.exe --list-devices` for the correct
-rem                    index on your system before assuming Vulkan1).
-rem If you need a backend-specific flag, add it to EXTRA_ARGS in
-rem .env.example, e.g.:  EXTRA_ARGS=-dev Vulkan1
-rem This keeps the batch file itself backend-agnostic — it works with
-rem whichever llama-server.exe build you've placed in runtime\windows\.
+rem This script is backend-agnostic — it works with whichever
+rem llama-server.exe build you've placed in runtime\windows\ (CPU-only,
+rem CUDA, Vulkan, ROCm, etc.). GPU_LAYERS=0 in .env means CPU-only.
+rem If your build needs a backend-specific flag (e.g. a Vulkan device
+rem index), add it to EXTRA_ARGS in .env, for example:
+rem   EXTRA_ARGS=-dev Vulkan1
+rem Check `llama-server.exe --list-devices` to find the right index/name
+rem for your system before assuming any particular value is correct.
 rem ---------------------------------------------------------------------
 
 runtime\windows\llama-server.exe ^
@@ -90,11 +86,11 @@ runtime\windows\llama-server.exe ^
 if errorlevel 1 (
     echo.
     echo [ERROR] llama-server.exe exited with an error.
-    echo         Common causes: CUDA/Vulkan out-of-memory (lower GPU_LAYERS
-    echo         in .env.example by 2 and retry), missing supporting DLLs
-    echo         next to llama-server.exe, or a port already in use
-    echo         (change MODEL_PORT in .env.example).
-    echo         See README.md Troubleshooting section.
+    echo         Common causes: GPU out-of-memory (lower GPU_LAYERS
+    echo         in .env by 2 and retry), missing supporting DLLs next
+    echo         to llama-server.exe, or a port already in use (change
+    echo         MODEL_PORT in .env).
+    echo         See RUN.md Troubleshooting section.
     echo.
 )
 
