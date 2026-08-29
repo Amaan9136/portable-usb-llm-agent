@@ -68,14 +68,14 @@ periodically on smaller drives.
 From the project root, run:
 
 ```
-Start-All-with-UI.bat
+Start-All.bat
 ```
 
 This single script starts the model server, starts the agent API,
 waits for both to be ready, and opens the cosmic neon web UI in your
 browser at `http://127.0.0.1:8787/`. It does not call or depend on
 `Start-Model.bat` or `Start-Agent.bat` - all of that logic is built
-directly into `Start-All-with-UI.bat` itself.
+directly into `Start-All.bat` itself.
 
 First run creates a Python virtual environment and installs
 dependencies (`agent/requirements.txt`) - this is the one step in
@@ -83,12 +83,12 @@ normal operation that needs internet access, and only on first setup.
 Subsequent runs reuse the existing `.venv`.
 
 Two console windows will open and stay open ("LLM Model Server" and
-"LLM Agent API") - leave them running. Closing the window `Start-All-with-UI.bat`
+"LLM Agent API") - leave them running. Closing the window `Start-All.bat`
 itself ran in does **not** stop them; use `Stop-All.bat`, or Ctrl+C in
 each of those two windows, to stop everything.
 
 If you'd rather use the raw API directly instead of the UI, once
-`Start-All-with-UI.bat` is running you can still open:
+`Start-All.bat` is running you can still open:
 ```
 http://127.0.0.1:8787/docs
 ```
@@ -105,7 +105,7 @@ be started for this.
 `Start-Model.bat` and `Start-Agent.bat` still exist if you want to
 start the model server and agent separately - for example, to watch
 each one's startup output in its own window without the combined
-wait/retry logic in `Start-All-with-UI.bat`, or to run the agent without ever
+wait/retry logic in `Start-All.bat`, or to run the agent without ever
 touching the UI. This is optional; most people never need it.
 
 **Window 1 - model server:**
@@ -124,16 +124,16 @@ does not start the model server itself.
 
 Note that starting things this way still gives you the full UI too
 (the agent serves it at `http://127.0.0.1:8787/`) - the only thing
-`Start-All-with-UI.bat` adds on top is the automatic sequencing, readiness
+`Start-All.bat` adds on top is the automatic sequencing, readiness
 checks, and auto-opening the browser for you.
 
-Do not run `Start-All-with-UI.bat` at the same time as `Start-Model.bat`/
+Do not run `Start-All.bat` at the same time as `Start-Model.bat`/
 `Start-Agent.bat` - they would try to bind the same ports twice and
 one set will fail to start.
 
 ## Using the UI
 
-Once `Start-All-with-UI.bat` has opened your browser (or you've started things
+Once `Start-All.bat` has opened your browser (or you've started things
 manually and opened `http://127.0.0.1:8787/` yourself), you can:
 
 - **Open Project** - paste the path to any local folder. It's copied
@@ -153,7 +153,7 @@ manually and opened `http://127.0.0.1:8787/` yourself), you can:
 
 Everything the UI does is also available from a terminal via `cli.py`,
 which talks to the same running agent server - open a separate
-terminal (in addition to, not instead of, `Start-All-with-UI.bat`) and run:
+terminal (in addition to, not instead of, `Start-All.bat`) and run:
 
 ```
 python cli.py --list-projects
@@ -166,7 +166,7 @@ python cli.py --read my-app/src/main.py
 
 On macOS/Linux, or if you already have the model server running and
 just want the agent + UI, `start_ui.py` is a cross-platform equivalent
-of `Start-All-with-UI.bat` for that half of the process:
+of `Start-All.bat` for that half of the process:
 
 ```
 python start_ui.py
@@ -195,22 +195,22 @@ your configured `MODEL_PATH`.
 ## Configuration reference
 
 All configuration lives in `.env` (copied from `.env.example`).
-`Start-All-with-UI.bat` (and, if you use them, `Start-Model.bat` /
+`Start-All.bat` (and, if you use them, `Start-Model.bat` /
 `Start-Agent.bat`) plus `agent/config.py` all read the same file, so
 every process agrees on ports, paths, and model without duplicating
 values.
 
 | Key | Read by | Meaning |
 |---|---|---|
-| `MODEL_PATH` | Start-All-with-UI.bat, scripts | Path to your `.gguf` file, relative to project root. |
-| `CONTEXT_SIZE` | Start-All-with-UI.bat | Context window size passed to llama-server (`-c`). Only applies to the `llama-server` backend - `llama-cli` doesn't take it in the same form (add via `EXTRA_ARGS` if your build supports it). |
-| `GPU_LAYERS` | Start-All-with-UI.bat | Layers offloaded to GPU (`-ngl`). `0` = CPU-only. Passed to both backends. |
-| `CPU_THREADS` | Start-All-with-UI.bat | CPU threads (`-t`). Passed to both backends. |
-| `MODEL_PORT` | Start-All-with-UI.bat, agent, scripts | Port the model server binds to on `127.0.0.1`. Passed as `--port` to `llama-server`; not passed to `llama-cli` (some `llama.exe serve` builds don't accept it the same way - set it via `EXTRA_ARGS` if yours does and you need a non-default port). |
-| `BACKEND` | Start-All-with-UI.bat, scripts\verify_environment.py | Which server to launch: `auto` (default, prefers `llama-server.exe` if present, else falls back to `LLAMA_EXE`), `llama-server`, or `llama-cli`. |
-| `LLAMA_EXE` | Start-All-with-UI.bat, scripts\verify_environment.py | Path or bare name of the `llama.exe`-style CLI build, used for the `llama-cli` backend. Defaults to `llama.exe` resolved via PATH. |
-| `EXTRA_ARGS` | Start-All-with-UI.bat | Extra flags appended verbatim to whichever backend's command line (backend-specific, e.g. a Vulkan device selector). |
-| `AGENT_PORT` | Start-All-with-UI.bat, agent | Port the FastAPI agent binds to on `127.0.0.1`. |
+| `MODEL_PATH` | Start-All.bat, scripts | Path to your `.gguf` file, relative to project root. |
+| `CONTEXT_SIZE` | Start-All.bat | Context window size passed to llama-server (`-c`). Only applies to the `llama-server` backend - `llama-cli` doesn't take it in the same form (add via `EXTRA_ARGS` if your build supports it). |
+| `GPU_LAYERS` | Start-All.bat | Layers offloaded to GPU (`-ngl`). `0` = CPU-only. Passed to both backends. |
+| `CPU_THREADS` | Start-All.bat | CPU threads (`-t`). Passed to both backends. |
+| `MODEL_PORT` | Start-All.bat, agent, scripts | Port the model server binds to on `127.0.0.1`. Passed as `--port` to `llama-server`; not passed to `llama-cli` (some `llama.exe serve` builds don't accept it the same way - set it via `EXTRA_ARGS` if yours does and you need a non-default port). |
+| `BACKEND` | Start-All.bat, scripts\verify_environment.py | Which server to launch: `auto` (default, prefers `llama-server.exe` if present, else falls back to `LLAMA_EXE`), `llama-server`, or `llama-cli`. |
+| `LLAMA_EXE` | Start-All.bat, scripts\verify_environment.py | Path or bare name of the `llama.exe`-style CLI build, used for the `llama-cli` backend. Defaults to `llama.exe` resolved via PATH. |
+| `EXTRA_ARGS` | Start-All.bat | Extra flags appended verbatim to whichever backend's command line (backend-specific, e.g. a Vulkan device selector). |
+| `AGENT_PORT` | Start-All.bat, agent | Port the FastAPI agent binds to on `127.0.0.1`. |
 | `LLM_MODEL_NAME` | agent | Model name string sent in `/v1/chat/completions` requests; must match what your chosen backend reports for your loaded model. |
 | `TOOL_MODE` | agent | `native` (OpenAI-style tool calls) or `fallback` (single JSON action per turn - more reliable on small/quantized models). |
 | `MAX_AGENT_TURNS` | agent | Max turns in the agent's sequential planner→implementer→reviewer→tester→packager loop. |
@@ -219,7 +219,7 @@ values.
 Environment variables set before launching a script take precedence
 over `.env`, which takes precedence over `.env.example`, which takes
 precedence over the in-code defaults - so `set AGENT_PORT=9000 &&
-Start-All-with-UI.bat` works without editing any file.
+Start-All.bat` works without editing any file.
 
 ## GPU tuning procedure
 
@@ -234,7 +234,7 @@ works everywhere. To offload to a GPU:
    (Use your vendor's equivalent tool for AMD/Intel GPUs.)
 
 2. In `.env`, increase `GPU_LAYERS` by a small increment (e.g. 2–4)
-   from its current value, restart `Start-All-with-UI.bat` (or just `Start-Model.bat`
+   from its current value, restart `Start-All.bat` (or just `Start-Model.bat`
    if you're running things manually), and send a test
    request (or just let it idle after loading - VRAM use is dominated
    by the loaded layers, not active generation).

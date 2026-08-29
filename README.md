@@ -37,9 +37,9 @@ The model and the llama.cpp binary are excluded deliberately - see
 
 1. Copy `.env.example` to `.env` and set `MODEL_PATH` / `LLM_MODEL_NAME` (and any GPU/backend settings) for your setup.
 2. Get a server backend: place a `llama-server.exe` build in `runtime\windows\`, **or** point `LLAMA_EXE` in `.env` at an already-installed `llama.exe` (defaults to resolving `llama.exe` on PATH). `BACKEND=auto` in `.env` picks whichever is available. Also place your `.gguf` model at the path from `MODEL_PATH`.
-3. Run **`Start-All-with-UI.bat`**. That's it - it starts the model server, starts the agent, waits for both to be ready, and opens the web UI in your browser automatically.
+3. Run **`Start-All.bat`**. That's it - it starts the model server, starts the agent, waits for both to be ready, and opens the web UI in your browser automatically.
 
-`Start-All-with-UI.bat` is the only script you need for normal use; it does not
+`Start-All.bat` is the only script you need for normal use; it does not
 call or depend on any other script. `Start-Model.bat` / `Start-Agent.bat`
 still exist for advanced manual use (e.g. running the agent without the
 UI, or starting each piece in its own separately-timed window) but
@@ -77,7 +77,7 @@ Portable USB LLM Agent/
 │   ├── download_model.py     # guided model download (no blind auto-fetch)
 │   └── verify_environment.py # pre-flight checks
 ├── .env.example         # copy to .env and edit
-├── Start-All-with-UI.bat                # the only script you need - starts model + agent + opens the UI
+├── Start-All.bat                # the only script you need - starts model + agent + opens the UI
 ├── Start-Model.bat              # advanced/manual: starts only the model server
 ├── Start-Agent.bat              # advanced/manual: starts only the agent (requires Start-Model.bat already running)
 ├── Stop-All.bat

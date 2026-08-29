@@ -1,6 +1,6 @@
 """
 Cross-platform launcher for Portable USB LLM Agent's UI.
-Windows users normally use Start-All-with-UI.bat, which also launches the model
+Windows users normally use Start-All.bat, which also launches the model
 server. This script is for when you already have the model server
 running separately (any OS) and just want to bring up the agent API
 (which also serves the UI) and open a browser.
