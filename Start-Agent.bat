@@ -1,11 +1,9 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-
 echo.
 echo Portable USB LLM Agent - starting agent API
 echo.
-
 where py >nul 2>nul
 if errorlevel 1 (
     where python >nul 2>nul
@@ -19,7 +17,6 @@ if errorlevel 1 (
 ) else (
     set "PYLAUNCHER=py"
 )
-
 if not exist ".venv\Scripts\python.exe" (
     echo Creating virtual environment...
     %PYLAUNCHER% -m venv .venv
@@ -41,21 +38,17 @@ if not exist ".venv\Scripts\python.exe" (
 ) else (
     call .venv\Scripts\activate.bat
 )
-
 set "AGENT_PORT=8787"
 if exist ".env" (
     for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
         if "%%A"=="AGENT_PORT" if not "%%B"=="" set "AGENT_PORT=%%B"
     )
 )
-
 echo.
 echo Agent will be available at: http://127.0.0.1:%AGENT_PORT%/docs
 echo Docs will be available at: http://127.0.0.1:%AGENT_PORT%/redoc
 echo Make sure Start-Model.bat is already running in another window.
 echo.
-
 cd agent
 ..\.venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port %AGENT_PORT%
-
 pause

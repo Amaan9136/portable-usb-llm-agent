@@ -1,7 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-
 rem =====================================================================
 rem Portable USB LLM Agent - Start-Model.bat
 rem
@@ -24,7 +23,6 @@ rem allowed). Falls back to the defaults below if .env is absent or a
 rem key is missing. Command-line/user env vars set before calling this
 rem script take precedence over .env (matches agent\config.py).
 rem =====================================================================
-
 set "MODEL_PATH=models\your-model.gguf"
 set "CONTEXT_SIZE=4096"
 set "GPU_LAYERS=0"
@@ -32,7 +30,6 @@ set "CPU_THREADS=6"
 set "MODEL_PORT=8080"
 set "BACKEND=auto"
 set "LLAMA_EXE=llama.exe"
-
 if exist ".env" (
     for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
         if not "%%A"=="" if not "%%B"=="" (
@@ -49,9 +46,7 @@ if exist ".env" (
     set "_KEY="
     set "_VAL="
 )
-
 set "BACKEND=%BACKEND: =%"
-
 if /i "%BACKEND%"=="auto" (
     if exist "runtime\windows\llama-server.exe" (
         set "RESOLVED_BACKEND=llama-server"
@@ -71,7 +66,6 @@ if /i "%BACKEND%"=="auto" (
     pause
     exit /b 1
 )
-
 echo.
 echo Portable USB LLM Agent - starting local model server
 echo   Backend:    %RESOLVED_BACKEND% (BACKEND=%BACKEND%)
@@ -80,7 +74,6 @@ echo   GPU layers: %GPU_LAYERS%
 echo   CPU threads:%CPU_THREADS%
 echo   Bind:       127.0.0.1:%MODEL_PORT%  (loopback only)
 echo.
-
 if not exist "%MODEL_PATH%" (
     echo [ERROR] Model file not found at: %MODEL_PATH%
     echo         Download it separately - see RUN.md, section
@@ -91,16 +84,13 @@ if not exist "%MODEL_PATH%" (
     pause
     exit /b 1
 )
-
 if /i "%RESOLVED_BACKEND%"=="llama-server" goto run_llama_server
 if /i "%RESOLVED_BACKEND%"=="llama-cli" goto run_llama_cli
-
 echo [ERROR] Internal error resolving backend "%RESOLVED_BACKEND%".
 echo         This should not happen - please report this as a bug.
 echo.
 pause
 exit /b 1
-
 :run_llama_server
 if not exist "runtime\windows\llama-server.exe" (
     echo [ERROR] runtime\windows\llama-server.exe was not found.
@@ -114,7 +104,6 @@ if not exist "runtime\windows\llama-server.exe" (
     pause
     exit /b 1
 )
-
 rem ---------------------------------------------------------------------
 rem GPU BACKEND NOTE
 rem ---------------------------------------------------------------------
@@ -127,7 +116,6 @@ rem   EXTRA_ARGS=-dev Vulkan1
 rem Check `llama-server.exe --list-devices` to find the right index/name
 rem for your system before assuming any particular value is correct.
 rem ---------------------------------------------------------------------
-
 runtime\windows\llama-server.exe ^
   -m "%MODEL_PATH%" ^
   -c %CONTEXT_SIZE% ^
@@ -137,7 +125,6 @@ runtime\windows\llama-server.exe ^
   --host 127.0.0.1 ^
   --port %MODEL_PORT% ^
   %EXTRA_ARGS%
-
 if errorlevel 1 (
     echo.
     echo [ERROR] llama-server.exe exited with an error.
@@ -148,12 +135,9 @@ if errorlevel 1 (
     echo         See RUN.md Troubleshooting section.
     echo.
 )
-
 pause
 exit /b 0
-
 :run_llama_cli
-
 where %LLAMA_EXE% >nul 2>nul
 if errorlevel 1 (
     if exist "%LLAMA_EXE%" (
@@ -168,7 +152,6 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-
 :llama_cli_found
 rem ---------------------------------------------------------------------
 rem GPU BACKEND NOTE
@@ -184,13 +167,11 @@ rem them, add them via EXTRA_ARGS, e.g. EXTRA_ARGS=-c 4096 --port %MODEL_PORT%
 rem Run `%LLAMA_EXE% serve --help` to confirm which flags your build
 rem actually supports before assuming any particular value is correct.
 rem ---------------------------------------------------------------------
-
 "%LLAMA_EXE%" serve ^
   -m "%MODEL_PATH%" ^
   -ngl %GPU_LAYERS% ^
   -t %CPU_THREADS% ^
   %EXTRA_ARGS%
-
 if errorlevel 1 (
     echo.
     echo [ERROR] %LLAMA_EXE% exited with an error.
@@ -204,6 +185,5 @@ if errorlevel 1 (
     echo         See RUN.md Troubleshooting section.
     echo.
 )
-
 pause
 exit /b 0

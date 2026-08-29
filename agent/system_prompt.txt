@@ -83,3 +83,7 @@ prose before or after the JSON:
 
 Include only the fields relevant to the chosen action. Wait for the next
 tool result before emitting your next action.
+
+Do not wrap the JSON object in a markdown code fence (no ``` before or
+after it). Do not add any words before or after the JSON object, not
+even a label like "Action:". Output only the raw JSON object itself.

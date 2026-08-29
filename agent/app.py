@@ -1,11 +1,9 @@
 """
 Portable USB LLM Agent agent API.
-
 Runs a single sequential agent loop (planner -> implementer -> reviewer ->
 tester -> packager, per system_prompt.txt) against a locally-hosted
 OpenAI-compatible llama.cpp server. Never calls multiple model instances
 concurrently - one shared local model, one request at a time.
-
 Two tool-invocation modes are supported:
   - native: uses OpenAI-style `tools`/`tool_calls` (default; works with
     llama.cpp's --jinja templated function calling for supported models).
@@ -15,54 +13,21 @@ Two tool-invocation modes are supported:
     Pydantic (schemas.FallbackAction). This trades some flexibility for
     much higher reliability on smaller/quantized local models.
 """
-
 from __future__ import annotations
-
 import json
 import logging
 import os
 import time
 from typing import Any, Iterator
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import APIConnectionError, OpenAI
 from pydantic import ValidationError
-
-from config import (
-    AGENT_PORT,
-    ARTIFACTS,
-    LLM_API_KEY,
-    LLM_BASE_URL,
-    LLM_MODEL,
-    LOGS,
-    MAX_AGENT_TURNS,
-    TOOL_MODE,
-    WORKSPACE,
-)
-from schemas import (
-    AgentRequest,
-    AgentResponse,
-    FallbackAction,
-    FileWriteRequest,
-    ImportProjectRequest,
-    ToolCallTrace,
-)
-from tools import (
-    PathSecurityError,
-    create_zip,
-    file_tree,
-    import_project,
-    list_files,
-    list_projects,
-    read_file,
-    run_command,
-    safe_artifact_path,
-    write_file,
-)
-
+from config import ( AGENT_PORT, ARTIFACTS, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LOGS, MAX_AGENT_TURNS, TOOL_MODE, WORKSPACE, )
+from schemas import ( AgentRequest, AgentResponse, FallbackAction, FileWriteRequest, ImportProjectRequest, ToolCallTrace, )
+from tools import ( PathSecurityError, create_zip, file_tree, import_project, list_files, list_projects, read_file, run_command, safe_artifact_path, write_file, )
 # --- Logging -----------------------------------------------------------
 # Structured, but deliberately excludes task text, file content, command
 # output, and anything that could contain secrets. Only metadata: which
@@ -76,9 +41,7 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("Portable USB LLM Agent")
-
 app = FastAPI(title="Portable USB LLM Agent Agent", version="1.0.0")
-
 # Loopback-only UI talks to this API from the same machine (a file:// or
 # 127.0.0.1-served page). CORS is opened for local origins only - this
 # process never binds anywhere but 127.0.0.1 (see SECURITY.md), so this
@@ -89,12 +52,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
-
 with open(os.path.join(os.path.dirname(__file__), "system_prompt.txt"), encoding="utf-8") as f:
     SYSTEM_PROMPT = f.read()
-
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -169,8 +129,26 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
 ]
-
-
+def _extract_fallback_action(raw: str) -> FallbackAction | None:
+    """Best-effort recovery of a FallbackAction from raw model text that
+    may be wrapped in a markdown code fence or have stray whitespace/prose
+    around the JSON object, instead of being pure JSON as instructed."""
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text[3:]
+        if text.lower().startswith("json"):
+            text = text[4:]
+        text = text.rsplit("```", 1)[0]
+        text = text.strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        return None
+    candidate = text[start : end + 1]
+    try:
+        return FallbackAction.model_validate_json(candidate)
+    except ValidationError:
+        return None
 def _dispatch_tool(name: str, arguments: dict, request: AgentRequest) -> dict:
     """Route a tool call to its implementation, injecting the per-request
     permission flags (allow_commands / allow_overwrite) rather than
@@ -197,8 +175,6 @@ def _dispatch_tool(name: str, arguments: dict, request: AgentRequest) -> dict:
             arguments["artifact_name"],
         )
     return {"ok": False, "error": f"Unknown tool: {name}"}
-
-
 def _run_native(request: AgentRequest) -> AgentResponse:
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -209,7 +185,6 @@ def _run_native(request: AgentRequest) -> AgentResponse:
     command_results: list[dict] = []
     artifact_filename: str | None = None
     warnings: list[str] = []
-
     for turn in range(MAX_AGENT_TURNS):
         try:
             completion = client.chat.completions.create(
@@ -227,22 +202,52 @@ def _run_native(request: AgentRequest) -> AgentResponse:
                     f"{LLM_BASE_URL}. Is Start-Model.bat running? ({exc})"
                 ),
             ) from exc
-
         message = completion.choices[0].message
         messages.append(message.model_dump(exclude_none=True))
         logger.info("turn=%d tool_calls=%d", turn, len(message.tool_calls or []))
-
         if not message.tool_calls:
-            return AgentResponse(
-                ok=True,
-                changed_files=changed_files,
-                command_results=command_results,
-                warnings=warnings,
-                final_answer=message.content or "",
-                artifact_filename=artifact_filename,
-                trace=trace,
+            rescued = _extract_fallback_action(message.content or "")
+            if rescued is None:
+                return AgentResponse(
+                    ok=True,
+                    changed_files=changed_files,
+                    command_results=command_results,
+                    warnings=warnings,
+                    final_answer=message.content or "",
+                    artifact_filename=artifact_filename,
+                    trace=trace,
+                )
+            warnings.append(
+                f"turn {turn}: model emitted a JSON action as plain text instead of a "
+                "native tool call; recovered it automatically."
             )
-
+            if rescued.action == "final_answer":
+                return AgentResponse(
+                    ok=True,
+                    changed_files=changed_files,
+                    command_results=command_results,
+                    warnings=warnings,
+                    final_answer=rescued.answer or "",
+                    artifact_filename=artifact_filename,
+                    trace=trace,
+                )
+            rescued_arguments = rescued.model_dump(exclude_none=True, exclude={"action"})
+            try:
+                result = _dispatch_tool(rescued.action, rescued_arguments, request)
+            except PathSecurityError as exc:
+                result = {"ok": False, "error": str(exc)}
+            except Exception as exc:
+                logger.exception("tool=%s failed", rescued.action)
+                result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+            if rescued.action == "write_file" and result.get("ok"):
+                changed_files.append(result["written"])
+            if rescued.action == "run_command":
+                command_results.append(result)
+            if rescued.action == "create_zip" and result.get("ok"):
+                artifact_filename = result["artifact"]
+            trace.append(ToolCallTrace(tool=rescued.action, arguments=rescued_arguments, result=result))
+            messages.append({"role": "user", "content": f"Tool result: {json.dumps(result)}"})
+            continue
         for call in message.tool_calls:
             try:
                 arguments = json.loads(call.function.arguments or "{}")
@@ -257,14 +262,12 @@ def _run_native(request: AgentRequest) -> AgentResponse:
                 except Exception as exc:  # defensive: never let a tool crash the loop
                     logger.exception("tool=%s failed", call.function.name)
                     result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-
             if call.function.name == "write_file" and result.get("ok"):
                 changed_files.append(result["written"])
             if call.function.name == "run_command":
                 command_results.append(result)
             if call.function.name == "create_zip" and result.get("ok"):
                 artifact_filename = result["artifact"]
-
             trace.append(ToolCallTrace(tool=call.function.name, arguments=arguments, result=result))
             messages.append(
                 {
@@ -273,7 +276,6 @@ def _run_native(request: AgentRequest) -> AgentResponse:
                     "content": json.dumps(result),
                 }
             )
-
     warnings.append(f"Agent turn limit ({MAX_AGENT_TURNS}) reached before a final answer.")
     return AgentResponse(
         ok=False,
@@ -284,8 +286,6 @@ def _run_native(request: AgentRequest) -> AgentResponse:
         artifact_filename=artifact_filename,
         trace=trace,
     )
-
-
 _ROLE_SEQUENCE = ["planner", "implementer", "reviewer", "tester", "packager"]
 _TOOL_TO_ROLE_HINT = {
     "list_files": "planner",
@@ -294,12 +294,8 @@ _TOOL_TO_ROLE_HINT = {
     "run_command": "tester",
     "create_zip": "packager",
 }
-
-
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
-
-
 def _stream_native(request: AgentRequest) -> Iterator[str]:
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -308,9 +304,7 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
     changed_files: list[str] = []
     artifact_filename: str | None = None
     seen_role = "planner"
-
     yield _sse("start", {"turns_allowed": MAX_AGENT_TURNS, "roles": _ROLE_SEQUENCE})
-
     for turn in range(MAX_AGENT_TURNS):
         yield _sse("turn_start", {"turn": turn})
         try:
@@ -333,11 +327,10 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
                 },
             )
             return
-
         content_parts: list[str] = []
         tool_call_chunks: dict[int, dict[str, Any]] = {}
         finish_reason = None
-
+        suppress_tokens: bool | None = None
         try:
             for chunk in stream:
                 choice = chunk.choices[0]
@@ -346,7 +339,12 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
                     finish_reason = choice.finish_reason
                 if delta and delta.content:
                     content_parts.append(delta.content)
-                    yield _sse("token", {"turn": turn, "text": delta.content})
+                    if suppress_tokens is None:
+                        stripped = "".join(content_parts).lstrip()
+                        if stripped:
+                            suppress_tokens = stripped[0] in "{`"
+                    if not suppress_tokens:
+                        yield _sse("token", {"turn": turn, "text": delta.content})
                 if delta and delta.tool_calls:
                     for tc in delta.tool_calls:
                         slot = tool_call_chunks.setdefault(
@@ -361,7 +359,6 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
         except APIConnectionError as exc:
             yield _sse("error", {"message": f"Lost connection to model server mid-stream: {exc}"})
             return
-
         full_content = "".join(content_parts)
         assistant_message: dict[str, Any] = {"role": "assistant", "content": full_content or None}
         if tool_call_chunks:
@@ -374,19 +371,61 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
                 for i, slot in sorted(tool_call_chunks.items())
             ]
         messages.append(assistant_message)
-
         if not tool_call_chunks:
+            rescued = _extract_fallback_action(full_content)
+            if rescued is None:
+                yield _sse(
+                    "final_answer",
+                    {
+                        "ok": True,
+                        "text": full_content,
+                        "changed_files": changed_files,
+                        "artifact_filename": artifact_filename,
+                    },
+                )
+                return
             yield _sse(
-                "final_answer",
+                "warning",
                 {
-                    "ok": True,
-                    "text": full_content,
-                    "changed_files": changed_files,
-                    "artifact_filename": artifact_filename,
+                    "message": (
+                        f"turn {turn}: model emitted a JSON action as plain text instead of a "
+                        "native tool call; recovered it automatically."
+                    )
                 },
             )
-            return
-
+            if rescued.action == "final_answer":
+                yield _sse(
+                    "final_answer",
+                    {
+                        "ok": True,
+                        "text": rescued.answer or "",
+                        "changed_files": changed_files,
+                        "artifact_filename": artifact_filename,
+                    },
+                )
+                return
+            name = rescued.action
+            role = _TOOL_TO_ROLE_HINT.get(name, seen_role)
+            seen_role = role
+            rescued_arguments = rescued.model_dump(exclude_none=True, exclude={"action"})
+            yield _sse("tool_call_start", {"turn": turn, "role": role, "tool": name, "arguments": rescued_arguments})
+            try:
+                result = _dispatch_tool(name, rescued_arguments, request)
+            except PathSecurityError as exc:
+                result = {"ok": False, "error": str(exc)}
+            except Exception as exc:
+                logger.exception("tool=%s failed", name)
+                result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+            if name == "write_file" and result.get("ok"):
+                changed_files.append(result["written"])
+            if name == "create_zip" and result.get("ok"):
+                artifact_filename = result["artifact"]
+            yield _sse(
+                "tool_call_end",
+                {"turn": turn, "role": role, "tool": name, "arguments": rescued_arguments, "result": result},
+            )
+            messages.append({"role": "user", "content": f"Tool result: {json.dumps(result)}"})
+            continue
         for i, slot in sorted(tool_call_chunks.items()):
             name = slot["name"] or "unknown"
             role = _TOOL_TO_ROLE_HINT.get(name, seen_role)
@@ -408,23 +447,18 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
                 except Exception as exc:  # defensive: never let a tool crash the stream
                     logger.exception("tool=%s failed", name)
                     result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-
             if name == "write_file" and result.get("ok"):
                 changed_files.append(result["written"])
             if name == "create_zip" and result.get("ok"):
                 artifact_filename = result["artifact"]
-
             yield _sse(
                 "tool_call_end",
                 {"turn": turn, "role": role, "tool": name, "arguments": arguments, "result": result},
             )
-
             call_id = slot["id"] or f"call_{i}"
             messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result)})
-
         if finish_reason == "length":
             yield _sse("warning", {"message": "Model hit its output length limit mid-turn."})
-
     yield _sse(
         "final_answer",
         {
@@ -434,8 +468,6 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
             "artifact_filename": artifact_filename,
         },
     )
-
-
 def _run_fallback(request: AgentRequest) -> AgentResponse:
     """Constrained single-JSON-action-per-turn loop for models/templates
     that don't reliably support native tool calling."""
@@ -453,7 +485,6 @@ def _run_fallback(request: AgentRequest) -> AgentResponse:
     command_results: list[dict] = []
     artifact_filename: str | None = None
     warnings: list[str] = []
-
     for turn in range(MAX_AGENT_TURNS):
         try:
             completion = client.chat.completions.create(
@@ -466,22 +497,25 @@ def _run_fallback(request: AgentRequest) -> AgentResponse:
                 status_code=503,
                 detail=f"Could not reach the local model server at {LLM_BASE_URL}. ({exc})",
             ) from exc
-
         raw = completion.choices[0].message.content or ""
         messages.append({"role": "assistant", "content": raw})
-
         try:
             action = FallbackAction.model_validate_json(raw)
         except ValidationError as exc:
-            warnings.append(f"turn {turn}: model emitted invalid action JSON, retrying.")
-            messages.append(
-                {
-                    "role": "user",
-                    "content": f"Invalid action JSON ({exc}). Emit exactly one valid action JSON object.",
-                }
+            action = _extract_fallback_action(raw)
+            if action is None:
+                warnings.append(f"turn {turn}: model emitted invalid action JSON, retrying.")
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"Invalid action JSON ({exc}). Emit exactly one valid action JSON "
+                        "object, with no markdown code fence and no other text.",
+                    }
+                )
+                continue
+            warnings.append(
+                f"turn {turn}: model wrapped its action JSON in extra text/fencing; recovered it automatically."
             )
-            continue
-
         if action.action == "final_answer":
             return AgentResponse(
                 ok=True,
@@ -492,7 +526,6 @@ def _run_fallback(request: AgentRequest) -> AgentResponse:
                 artifact_filename=artifact_filename,
                 trace=trace,
             )
-
         arguments = action.model_dump(exclude_none=True, exclude={"action"})
         try:
             result = _dispatch_tool(action.action, arguments, request)
@@ -501,17 +534,14 @@ def _run_fallback(request: AgentRequest) -> AgentResponse:
         except Exception as exc:
             logger.exception("tool=%s failed", action.action)
             result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-
         if action.action == "write_file" and result.get("ok"):
             changed_files.append(result["written"])
         if action.action == "run_command":
             command_results.append(result)
         if action.action == "create_zip" and result.get("ok"):
             artifact_filename = result["artifact"]
-
         trace.append(ToolCallTrace(tool=action.action, arguments=arguments, result=result))
         messages.append({"role": "user", "content": f"Tool result: {json.dumps(result)}"})
-
     warnings.append(f"Agent turn limit ({MAX_AGENT_TURNS}) reached before a final answer.")
     return AgentResponse(
         ok=False,
@@ -522,8 +552,6 @@ def _run_fallback(request: AgentRequest) -> AgentResponse:
         artifact_filename=artifact_filename,
         trace=trace,
     )
-
-
 @app.get("/health")
 def health() -> dict:
     return {
@@ -532,8 +560,6 @@ def health() -> dict:
         "model": LLM_MODEL,
         "tool_mode": TOOL_MODE,
     }
-
-
 @app.post("/agent", response_model=AgentResponse)
 def run_agent(request: AgentRequest) -> AgentResponse:
     logger.info(
@@ -545,14 +571,10 @@ def run_agent(request: AgentRequest) -> AgentResponse:
     if TOOL_MODE == "fallback":
         return _run_fallback(request)
     return _run_native(request)
-
-
 @app.get("/artifacts")
 def list_artifacts() -> dict:
     files = sorted(p.name for p in ARTIFACTS.glob("*.zip") if p.is_file())
     return {"ok": True, "artifacts": files}
-
-
 @app.get("/artifacts/{filename}")
 def download_artifact(filename: str) -> FileResponse:
     try:
@@ -561,10 +583,7 @@ def download_artifact(filename: str) -> FileResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
     return FileResponse(path, media_type="application/zip", filename=path.name)
-
-
 @app.post("/agent/stream")
 def run_agent_stream(request: AgentRequest) -> StreamingResponse:
     logger.info(
@@ -592,49 +611,35 @@ def run_agent_stream(request: AgentRequest) -> StreamingResponse:
                     "artifact_filename": response.artifact_filename,
                 },
             )
-
         return StreamingResponse(_fallback_wrapper(), media_type="text/event-stream")
-
     return StreamingResponse(_stream_native(request), media_type="text/event-stream")
-
-
 @app.get("/projects")
 def get_projects() -> dict:
     return list_projects()
-
-
 @app.post("/projects/import")
 def post_import_project(request: ImportProjectRequest) -> dict:
     result = import_project(request.source_path, request.project_name)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Import failed."))
     return result
-
-
 @app.get("/tree")
 def get_tree(relative_path: str = ".") -> dict:
     result = file_tree(relative_path)
     if not result.get("ok"):
         raise HTTPException(status_code=404, detail=result.get("error", "Not found."))
     return result
-
-
 @app.get("/file")
 def get_file(relative_path: str) -> dict:
     result = read_file(relative_path)
     if not result.get("ok"):
         raise HTTPException(status_code=404, detail=result.get("error", "Not found."))
     return result
-
-
 @app.put("/file")
 def put_file(relative_path: str, body: FileWriteRequest) -> dict:
     result = write_file(relative_path, body.content, allow_overwrite=body.allow_overwrite)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Write failed."))
     return result
-
-
 _UI_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui")
 if os.path.isdir(_UI_DIR):
     app.mount("/", StaticFiles(directory=_UI_DIR, html=True), name="ui")

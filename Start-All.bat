@@ -1,7 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-
 rem =====================================================================
 rem Portable USB LLM Agent - Start-All.bat
 rem
@@ -15,14 +14,12 @@ rem This does NOT replace Start-Model.bat / Start-Agent.bat - it just
 rem sequences them. You can still run either one directly, and Stop-All
 rem still needs manual Ctrl+C in each window per its own README notes.
 rem =====================================================================
-
 set "MODEL_PORT=8080"
 if exist ".env" (
     for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
         if "%%A"=="MODEL_PORT" if not "%%B"=="" set "MODEL_PORT=%%B"
     )
 )
-
 if not exist "Start-Model.bat" (
     echo [ERROR] Start-Model.bat not found in %cd%.
     pause
@@ -33,15 +30,12 @@ if not exist "Start-Agent.bat" (
     pause
     exit /b 1
 )
-
 echo.
 echo Portable USB LLM Agent - starting model + agent
 echo   Model port: %MODEL_PORT%  (from .env, default 8080)
 echo.
-
 echo Launching model server in a new window...
 start "LLM Model Server" cmd /k call "Start-Model.bat"
-
 echo Waiting for model server on 127.0.0.1:%MODEL_PORT% ...
 set "READY=0"
 for /l %%i in (1,1,120) do (
@@ -54,7 +48,6 @@ for /l %%i in (1,1,120) do (
         )
     )
 )
-
 if "%READY%"=="0" (
     echo.
     echo [ERROR] Model server did not open port %MODEL_PORT% within 120 seconds.
@@ -65,10 +58,8 @@ if "%READY%"=="0" (
     pause
     exit /b 1
 )
-
 echo Model server is up. Launching agent in a new window...
 start "LLM Agent API" cmd /k call "Start-Agent.bat"
-
 echo.
 echo Both windows launched:
 echo   - "LLM Model Server" window: llama backend
