@@ -5,7 +5,7 @@ Verifies the local environment is ready to run Portable USB LLM Agent:
     ("serve" subcommand) build, per BACKEND in .env
   - Model file present at MODEL_PATH (from .env / .env.example)
   - Free disk space on the drive this project lives on
-  - nvidia-smi availability (optional — informational only)
+  - nvidia-smi availability (optional - informational only)
 
 Run this before your first Start-Model.bat / Start-Agent.bat.
 """
@@ -60,7 +60,7 @@ def check_python() -> tuple[bool, str]:
     ok = (version.major, version.minor) >= MIN_PYTHON
     label = f"Python {version.major}.{version.minor}.{version.micro}"
     if not ok:
-        return False, f"{label} — need >= {MIN_PYTHON[0]}.{MIN_PYTHON[1]}"
+        return False, f"{label} - need >= {MIN_PYTHON[0]}.{MIN_PYTHON[1]}"
     return True, label
 
 
@@ -127,7 +127,7 @@ def check_model_file() -> tuple[bool, str]:
 
     size_gb = EXPECTED_MODEL.stat().st_size / 1e9
     if size_gb < 0.05:
-        return False, f"File exists but is only {size_gb:.3f} GB — looks incomplete or empty. Re-download."
+        return False, f"File exists but is only {size_gb:.3f} GB - looks incomplete or empty. Re-download."
     return True, f"Found, {size_gb:.2f} GB."
 
 
@@ -141,7 +141,7 @@ def check_disk_space() -> tuple[bool, str]:
 def check_nvidia_smi() -> tuple[bool, str]:
     exe = shutil.which("nvidia-smi")
     if not exe:
-        return True, "nvidia-smi not found on PATH (optional — only relevant for NVIDIA GPU tuning)."
+        return True, "nvidia-smi not found on PATH (optional - only relevant for NVIDIA GPU tuning)."
 
     try:
         result = subprocess.run([exe, "--query-gpu=name,memory.total", "--format=csv,noheader"],
@@ -160,7 +160,7 @@ def main() -> int:
         ("nvidia-smi (optional)", check_nvidia_smi),
     ]
 
-    print("Portable USB LLM Agent — Environment Verification")
+    print("Portable USB LLM Agent - Environment Verification")
     print("=" * 45)
 
     all_required_ok = True
@@ -175,7 +175,7 @@ def main() -> int:
     if all_required_ok:
         print("Environment looks ready. Run Start-Model.bat, then Start-Agent.bat.")
     else:
-        print("One or more required checks failed — see FAIL lines above.")
+        print("One or more required checks failed - see FAIL lines above.")
 
     return 0 if all_required_ok else 1
 

@@ -3,10 +3,10 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 rem =====================================================================
-rem Portable USB LLM Agent — Start-Model.bat
+rem Portable USB LLM Agent - Start-Model.bat
 rem
 rem Starts a local llama.cpp server bound to 127.0.0.1 ONLY. Never edit
-rem this to bind to 0.0.0.0 or a LAN-visible address — see SECURITY.md.
+rem this to bind to 0.0.0.0 or a LAN-visible address - see SECURITY.md.
 rem
 rem Supports two backend styles:
 rem   llama-server - the standalone runtime\windows\llama-server.exe
@@ -96,7 +96,7 @@ if not exist "runtime\windows\llama-server.exe" (
 rem ---------------------------------------------------------------------
 rem GPU BACKEND NOTE
 rem ---------------------------------------------------------------------
-rem This script is backend-agnostic — it works with whichever
+rem This script is backend-agnostic - it works with whichever
 rem llama-server.exe build you've placed in runtime\windows\ (CPU-only,
 rem CUDA, Vulkan, ROCm, etc.). GPU_LAYERS=0 in .env means CPU-only.
 rem If your build needs a backend-specific flag (e.g. a Vulkan device

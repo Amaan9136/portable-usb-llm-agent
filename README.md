@@ -4,7 +4,7 @@ A portable, offline, local coding agent for a Windows USB drive. Runs
 any GGUF model of your choice through llama.cpp's local
 OpenAI-compatible server, driven by a small FastAPI agent that writes
 files, runs a narrow allowlist of commands, and packages finished
-projects into ZIP artifacts — all contained inside a `workspace/`
+projects into ZIP artifacts - all contained inside a `workspace/`
 sandbox on your machine.
 
 **Honest scope statement:** this is a Windows-portable project only,
@@ -12,13 +12,13 @@ unless you separately add Linux/macOS `llama-server` binaries to a
 corresponding `runtime/<platform>/` folder and adjust the batch scripts
 accordingly (not provided here). Performance depends entirely on your
 host CPU, RAM, USB drive read speed, GPU/VRAM, and which model/quant
-you choose — this will not run "fast on any system." Expect this to be
+you choose - this will not run "fast on any system." Expect this to be
 useful for small, well-scoped tasks, not large codebases or long
 unattended sessions.
 
 Every model, backend, and tuning value (model path, ports, context
 size, GPU layers, thread count, backend flags) is configured through a
-single `.env` file — nothing is hardcoded to a specific model. See
+single `.env` file - nothing is hardcoded to a specific model. See
 `.env.example` for the full list of keys.
 
 ## What's in the box vs. what you provide
@@ -26,10 +26,10 @@ single `.env` file — nothing is hardcoded to a specific model. See
 | Provided in this ZIP | You download separately |
 |---|---|
 | Agent source code, tests, docs | A GGUF model of your choice |
-| Batch launch scripts | Either a `llama-server.exe` build matching your backend (CPU/CUDA/Vulkan/etc.), or an already-installed `llama.exe` (with a `serve` subcommand) — either works |
-| Empty `workspace/`, `artifacts/`, `logs/`, `models/` folders | — |
+| Batch launch scripts | Either a `llama-server.exe` build matching your backend (CPU/CUDA/Vulkan/etc.), or an already-installed `llama.exe` (with a `serve` subcommand) - either works |
+| Empty `workspace/`, `artifacts/`, `logs/`, `models/` folders | - |
 
-The model and the llama.cpp binary are excluded deliberately — see
+The model and the llama.cpp binary are excluded deliberately - see
 `runtime/windows/README.txt` and `RUN.md`.
 
 ## Quick start
@@ -40,7 +40,7 @@ The model and the llama.cpp binary are excluded deliberately — see
 4. Open `http://127.0.0.1:8787/docs` or run `python scripts\smoke_test.py`.
 
 Full setup, configuration reference, GPU tuning, API examples, and
-troubleshooting live in **[RUN.md](RUN.md)** — read that before your
+troubleshooting live in **[RUN.md](RUN.md)** - read that before your
 first run.
 
 ## Project structure

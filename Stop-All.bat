@@ -1,10 +1,10 @@
 @echo off
 rem =====================================================================
-rem Portable USB LLM Agent — Stop-All.bat
+rem Portable USB LLM Agent - Stop-All.bat
 rem
 rem Best-effort stop for the model server (llama-server.exe) and the
 rem uvicorn agent process. This kills by process name/window title
-rem match, which is blunt — if you run other copies of these processes
+rem match, which is blunt - if you run other copies of these processes
 rem for unrelated work, close those manually first, or close each
 rem Portable USB LLM Agent window directly with Ctrl+C instead of
 rem running this script.

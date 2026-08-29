@@ -1,4 +1,4 @@
-"""API-level tests. These do NOT require a running llama-server —
+"""API-level tests. These do NOT require a running llama-server -
 LLM calls are mocked so the test suite runs offline and fast, matching
 the project's own no-network-during-operation principle."""
 

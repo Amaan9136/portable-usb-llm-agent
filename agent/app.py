@@ -4,7 +4,7 @@ Portable USB LLM Agent agent API.
 Runs a single sequential agent loop (planner -> implementer -> reviewer ->
 tester -> packager, per system_prompt.txt) against a locally-hosted
 OpenAI-compatible llama.cpp server. Never calls multiple model instances
-concurrently — one shared local model, one request at a time.
+concurrently - one shared local model, one request at a time.
 
 Two tool-invocation modes are supported:
   - native: uses OpenAI-style `tools`/`tool_calls` (default; works with
@@ -140,7 +140,7 @@ TOOLS: list[dict[str, Any]] = [
 def _dispatch_tool(name: str, arguments: dict, request: AgentRequest) -> dict:
     """Route a tool call to its implementation, injecting the per-request
     permission flags (allow_commands / allow_overwrite) rather than
-    trusting the model to pass them — the model never controls these."""
+    trusting the model to pass them - the model never controls these."""
     if name == "list_files":
         return list_files(arguments.get("relative_path", "."))
     if name == "read_file":

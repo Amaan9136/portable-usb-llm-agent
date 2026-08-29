@@ -1,5 +1,5 @@
 """
-Smoke test — checks that both the model server and the agent API are
+Smoke test - checks that both the model server and the agent API are
 reachable and healthy, WITHOUT running an actual generation task (no
 project is created, no tokens are generated). Fast sanity check before
 you hand the agent real work.
@@ -61,7 +61,7 @@ def _check(label: str, urls: list[str], timeout: float = 5.0) -> bool:
 
 
 def main() -> int:
-    print("Portable USB LLM Agent — Smoke Test")
+    print("Portable USB LLM Agent - Smoke Test")
     print("=" * 40)
 
     model_ok = _check("Model server", MODEL_HEALTH_URLS)

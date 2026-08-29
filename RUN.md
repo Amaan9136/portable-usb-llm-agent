@@ -10,15 +10,15 @@ short overview and project structure.
 | This project's source, docs, scripts | < 5 MB |
 | `.venv` (created on first Start-Agent.bat run) | ~150–300 MB |
 | llama-server.exe + supporting DLLs (skip if using an already-installed llama.exe) | ~50–300 MB depending on backend |
-| Your chosen GGUF model | varies — a few hundred MB to tens of GB depending on model size/quantization |
+| Your chosen GGUF model | varies - a few hundred MB to tens of GB depending on model size/quantization |
 | Working headroom for generated projects/artifacts | plan for 1–2 GB+ |
 
-Budget your drive size around the model you actually pick — check its
+Budget your drive size around the model you actually pick - check its
 file size on the model's Hugging Face (or other host) page before
 downloading. Clear old `workspace/` and `artifacts/` content
 periodically on smaller drives.
 
-## Setup — first time
+## Setup - first time
 
 1. **Verify your environment** (after cloning/extracting this project):
    ```
@@ -26,7 +26,7 @@ periodically on smaller drives.
    ```
    This checks Python version, disk space, and reports what's missing.
    It will report the model and model server backend as missing on a
-   fresh checkout — that's expected until you complete steps 2–4.
+   fresh checkout - that's expected until you complete steps 2–4.
 
 2. **Copy the config template** and edit it for your setup:
    ```
@@ -36,7 +36,7 @@ periodically on smaller drives.
    match the model you plan to use. See "Configuration reference" below
    for every key.
 
-3. **Get a model server backend.** Two options — pick whichever applies:
+3. **Get a model server backend.** Two options - pick whichever applies:
    - **Already have a `llama.exe` build installed** (e.g. one that
      supports `llama.exe serve -m ... -ngl ... -t ...`)? Nothing to
      install. `Start-Model.bat` auto-detects and uses it via
@@ -67,19 +67,19 @@ periodically on smaller drives.
 
 Open two terminal/console windows in the project root:
 
-**Window 1 — model server:**
+**Window 1 - model server:**
 ```
 Start-Model.bat
 ```
 Wait for it to print that the server is listening before continuing.
 Leave this window open.
 
-**Window 2 — agent API:**
+**Window 2 - agent API:**
 ```
 Start-Agent.bat
 ```
 First run creates a Python virtual environment and installs
-dependencies (`agent/requirements.txt`) — this is the one step in
+dependencies (`agent/requirements.txt`) - this is the one step in
 normal operation that needs internet access, and only on first setup.
 Subsequent runs reuse the existing `.venv`.
 
@@ -97,7 +97,7 @@ To stop both servers, close their console windows or run `Stop-All.bat`.
 
 ## Downloading a model
 
-This project is not tied to any specific model — any GGUF-format model
+This project is not tied to any specific model - any GGUF-format model
 works, as long as your chosen backend (`llama-server.exe` or
 `llama.exe`) can load it and your hardware can run it. A coding-focused
 instruct model is a natural fit for this agent's workflow, but the
@@ -125,22 +125,22 @@ duplicating values.
 | Key | Read by | Meaning |
 |---|---|---|
 | `MODEL_PATH` | Start-Model.bat, scripts | Path to your `.gguf` file, relative to project root. |
-| `CONTEXT_SIZE` | Start-Model.bat | Context window size passed to llama-server (`-c`). Only applies to the `llama-server` backend — `llama-cli` doesn't take it in the same form (add via `EXTRA_ARGS` if your build supports it). |
+| `CONTEXT_SIZE` | Start-Model.bat | Context window size passed to llama-server (`-c`). Only applies to the `llama-server` backend - `llama-cli` doesn't take it in the same form (add via `EXTRA_ARGS` if your build supports it). |
 | `GPU_LAYERS` | Start-Model.bat | Layers offloaded to GPU (`-ngl`). `0` = CPU-only. Passed to both backends. |
 | `CPU_THREADS` | Start-Model.bat | CPU threads (`-t`). Passed to both backends. |
-| `MODEL_PORT` | Start-Model.bat, agent, scripts | Port the model server binds to on `127.0.0.1`. Passed as `--port` to `llama-server`; not passed to `llama-cli` (some `llama.exe serve` builds don't accept it the same way — set it via `EXTRA_ARGS` if yours does and you need a non-default port). |
+| `MODEL_PORT` | Start-Model.bat, agent, scripts | Port the model server binds to on `127.0.0.1`. Passed as `--port` to `llama-server`; not passed to `llama-cli` (some `llama.exe serve` builds don't accept it the same way - set it via `EXTRA_ARGS` if yours does and you need a non-default port). |
 | `BACKEND` | Start-Model.bat, scripts\verify_environment.py | Which server to launch: `auto` (default, prefers `llama-server.exe` if present, else falls back to `LLAMA_EXE`), `llama-server`, or `llama-cli`. |
 | `LLAMA_EXE` | Start-Model.bat, scripts\verify_environment.py | Path or bare name of the `llama.exe`-style CLI build, used for the `llama-cli` backend. Defaults to `llama.exe` resolved via PATH. |
 | `EXTRA_ARGS` | Start-Model.bat | Extra flags appended verbatim to whichever backend's command line (backend-specific, e.g. a Vulkan device selector). |
 | `AGENT_PORT` | Start-Agent.bat, agent | Port the FastAPI agent binds to on `127.0.0.1`. |
 | `LLM_MODEL_NAME` | agent | Model name string sent in `/v1/chat/completions` requests; must match what your chosen backend reports for your loaded model. |
-| `TOOL_MODE` | agent | `native` (OpenAI-style tool calls) or `fallback` (single JSON action per turn — more reliable on small/quantized models). |
+| `TOOL_MODE` | agent | `native` (OpenAI-style tool calls) or `fallback` (single JSON action per turn - more reliable on small/quantized models). |
 | `MAX_AGENT_TURNS` | agent | Max turns in the agent's sequential planner→implementer→reviewer→tester→packager loop. |
 | `COMMAND_TIMEOUT_SECONDS` | agent | Timeout for any single allowlisted shell command the agent runs. |
 
 Environment variables set before launching a script take precedence
 over `.env`, which takes precedence over `.env.example`, which takes
-precedence over the in-code defaults — so `set AGENT_PORT=9000 &&
+precedence over the in-code defaults - so `set AGENT_PORT=9000 &&
 Start-Agent.bat` works without editing any file.
 
 ## GPU tuning procedure
@@ -152,12 +152,12 @@ works everywhere. To offload to a GPU:
    ```
    nvidia-smi -l 1
    ```
-   This refreshes GPU stats every second — watch the memory-used column.
+   This refreshes GPU stats every second - watch the memory-used column.
    (Use your vendor's equivalent tool for AMD/Intel GPUs.)
 
 2. In `.env`, increase `GPU_LAYERS` by a small increment (e.g. 2–4)
    from its current value, restart `Start-Model.bat`, and send a test
-   request (or just let it idle after loading — VRAM use is dominated
+   request (or just let it idle after loading - VRAM use is dominated
    by the loaded layers, not active generation).
 
 3. Watch your GPU monitor while the model is loaded and while a request
@@ -166,7 +166,7 @@ works everywhere. To offload to a GPU:
    OS compositor, driver overhead) that also claim VRAM.
 
 4. If you see an out-of-memory error at any point, reduce `GPU_LAYERS`
-   by more than your last increment — OOM errors usually mean you're
+   by more than your last increment - OOM errors usually mean you're
    already over budget by more than one layer's worth of memory.
 
 5. `GPU_LAYERS=0` (fully CPU) always works as a fallback, assuming
@@ -174,7 +174,7 @@ works everywhere. To offload to a GPU:
    will be markedly slower than GPU offload but is a valid option if
    GPU tuning proves troublesome.
 
-**CPU_THREADS:** benchmark a few values on your own machine — there is
+**CPU_THREADS:** benchmark a few values on your own machine - there is
 no universally correct value; it depends on your core count and
 background system load. Test it and set whichever you find fastest in
 `.env`.
@@ -192,7 +192,7 @@ PowerShell:
 Invoke-RestMethod http://127.0.0.1:8787/health
 ```
 
-**Run a task** (no commands, no ZIP — safest default):
+**Run a task** (no commands, no ZIP - safest default):
 
 curl:
 ```
@@ -247,7 +247,7 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 Tests mock the LLM server entirely (no running model server backend
-required) so the suite runs fast and fully offline — consistent with
+required) so the suite runs fast and fully offline - consistent with
 this project's own no-network-during-operation principle.
 
 ## Troubleshooting
@@ -293,7 +293,7 @@ hardware. Check: (a) you're actually getting GPU offload (`GPU_LAYERS`
 competing for CPU/GPU, (d) if running from the USB drive itself rather
 than copied to local disk, USB read speed affects initial model load
 time specifically. Model load-once startup time is separate from
-per-token generation speed — a slow *load* doesn't necessarily mean
+per-token generation speed - a slow *load* doesn't necessarily mean
 slow *generation*.
 
 **"missing DLL" error when starting llama-server.exe**

@@ -35,12 +35,12 @@ from config import (
 # Only these executables may ever be invoked. Checked against the raw
 # first argument BEFORE any path resolution, so "python" cannot be
 # smuggled in as "C:\Windows\System32\python.exe" to dodge the allowlist
-# semantics — we still only accept the bare command name and let the OS
+# semantics - we still only accept the bare command name and let the OS
 # resolve it from PATH, which keeps behavior predictable and auditable.
 ALLOWED_COMMANDS = {"python", "pytest", "npm", "node", "git"}
 
 # Explicitly called out in the spec as must-block, even though they're
-# not in ALLOWED_COMMANDS anyway (defense in depth — this list exists so
+# not in ALLOWED_COMMANDS anyway (defense in depth - this list exists so
 # a future edit to ALLOWED_COMMANDS can't accidentally re-admit these,
 # and so error messages are more specific for common LLM mistakes).
 EXPLICITLY_BLOCKED = {
@@ -57,7 +57,7 @@ EXPLICITLY_BLOCKED = {
     "netsh", "netstat", "ping", "nslookup", "telnet",
 }
 
-# Windows reserved device names — creating a file with one of these
+# Windows reserved device names - creating a file with one of these
 # stems (with or without an extension) has special OS meaning and must
 # be rejected regardless of the requested extension.
 _WINDOWS_RESERVED_NAMES = {
@@ -83,7 +83,7 @@ def _reject_reserved_names(relative_path: str) -> None:
 def _reject_absolute_or_drive(relative_path: str) -> None:
     # Reject POSIX-absolute ("/etc/passwd"), Windows-absolute
     # ("C:\\Windows"), UNC paths ("\\\\server\\share"), and drive-relative
-    # paths ("C:foo") — PureWindowsPath.is_absolute() alone does not
+    # paths ("C:foo") - PureWindowsPath.is_absolute() alone does not
     # reliably catch every one of these on a POSIX host, so check
     # multiple signals explicitly.
     if os.path.isabs(relative_path):
@@ -117,7 +117,7 @@ def safe_workspace_path(relative_path: str) -> Path:
 
     # resolve() follows symlinks. If a symlink inside workspace points
     # outside it, the resolved path will land outside WORKSPACE and this
-    # check catches it — same mechanism handles plain ".." traversal.
+    # check catches it - same mechanism handles plain ".." traversal.
     try:
         candidate.relative_to(WORKSPACE)
     except ValueError as exc:
@@ -239,7 +239,7 @@ def run_command(
             text=True,
             capture_output=True,
             timeout=COMMAND_TIMEOUT_SECONDS,
-            shell=False,  # never shell=True — no shell metacharacter expansion
+            shell=False,  # never shell=True - no shell metacharacter expansion
         )
         return {
             "ok": completed.returncode == 0,
@@ -272,7 +272,7 @@ def create_zip(source_relative_path: str, artifact_name: str) -> dict:
     # it must resolve to a plain filename inside ARTIFACTS, never a
     # nested path. Use PureWindowsPath (not the platform-default Path)
     # so this is correct even when the agent runs on a non-Windows host
-    # (e.g. this test suite on Linux) — PureWindowsPath understands
+    # (e.g. this test suite on Linux) - PureWindowsPath understands
     # backslash separators and drive letters the way the actual deployed
     # Windows target will, whereas a POSIX PurePath would treat
     # "..\\..\\evil" as a single opaque filename and let it through.

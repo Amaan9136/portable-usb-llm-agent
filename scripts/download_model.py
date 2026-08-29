@@ -2,7 +2,7 @@
 Model download helper for Portable USB LLM Agent.
 
 This script deliberately does NOT silently fetch a model from a hardcoded
-URL — GGUF repository layouts and filenames on Hugging Face (and similar
+URL - GGUF repository layouts and filenames on Hugging Face (and similar
 hosts) change over time, and a stale hardcoded URL either breaks or,
 worse, silently pulls a different file than you expect. Instead this
 script:
@@ -15,7 +15,7 @@ script:
      SHA256 print at the end so you can cross-check it against the
      repository's listed checksum if one is published.
 
-This project is not tied to any specific model — pick whatever GGUF
+This project is not tied to any specific model - pick whatever GGUF
 model (any size/quantization your hardware can run) works for you, set
 MODEL_PATH and LLM_MODEL_NAME in .env to match, and use this script only
 as an optional download convenience.
@@ -54,7 +54,7 @@ def _load_env(path: Path) -> dict[str, str]:
 
 def _configured_model_path() -> Path:
     """MODEL_PATH from .env, falling back to .env.example, then a
-    generic default — same precedence as agent/config.py."""
+    generic default - same precedence as agent/config.py."""
     values = {
         **_load_env(DEFAULT_ENV_EXAMPLE_PATH),
         **_load_env(DEFAULT_ENV_PATH),
@@ -65,7 +65,7 @@ def _configured_model_path() -> Path:
 
 def _instructions(destination: Path) -> str:
     return f"""
-Portable USB LLM Agent — Model Download Guide
+Portable USB LLM Agent - Model Download Guide
 =====================================
 
 This project is model-agnostic: any GGUF-format model works, as long as
@@ -79,7 +79,7 @@ WHERE TO GET ONE
 1. Search Hugging Face (or another trusted host) for GGUF builds of the
    model you want, e.g. "<model-name>-GGUF". Prefer the official
    publisher's org account, or a well-known quantizer, over an unverified
-   re-upload — unless you've checked the re-upload's checksum yourself.
+   re-upload - unless you've checked the re-upload's checksum yourself.
 
 2. Pick a quantization level (e.g. Q4_K_M, Q5_K_M, Q8_0) that fits your
    available VRAM/RAM. Smaller quant = less memory, lower quality;
@@ -89,7 +89,7 @@ WHERE TO GET ONE
 3. If the model is split into multiple parts (filenames ending in
    "-00001-of-00002.gguf" etc.), download ALL parts, then merge with:
        llama-gguf-split --merge <part1> <merged-output.gguf>
-   (ships alongside llama-server.exe in most llama.cpp release archives —
+   (ships alongside llama-server.exe in most llama.cpp release archives -
    check runtime\\windows\\ after you've placed your build there, or
    alongside your llama.exe installation if using that backend instead.)
 
@@ -97,21 +97,21 @@ WHERE TO GET ONE
    MODEL_PATH in your .env (currently resolves to):
        {destination}
    If you use a different path/filename, update MODEL_PATH in .env to
-   match — Start-Model.bat, verify_environment.py, and this script all
+   match - Start-Model.bat, verify_environment.py, and this script all
    read that same setting.
 
 5. Also set LLM_MODEL_NAME in .env to the model name string your
-   backend reports for the file you loaded — check `/v1/models` on the
+   backend reports for the file you loaded - check `/v1/models` on the
    running server, or its startup log, if unsure.
 
 6. Sanity-check the downloaded file size against what the repository
    lists for that quantization. A drastically smaller file usually means
-   an interrupted download — re-download it.
+   an interrupted download - re-download it.
 
 DO NOT AUTOMATICALLY TRUST OTHER MODELS
 ------------------------------------------
 This script will not download an arbitrary URL without --url, and even
-then, only fetches exactly the one URL you provide — verify it yourself
+then, only fetches exactly the one URL you provide - verify it yourself
 before passing it. Never point this at an untrusted or unofficial mirror
 without checking published checksums first.
 """
@@ -160,7 +160,7 @@ def main() -> int:
     print(_instructions(default_destination))
 
     if not args.url:
-        print("No --url provided. Instructions only — nothing downloaded.")
+        print("No --url provided. Instructions only - nothing downloaded.")
         return 0
 
     destination = MODELS_DIR / args.filename

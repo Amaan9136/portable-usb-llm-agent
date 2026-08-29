@@ -3,11 +3,11 @@ Central configuration for the Portable USB LLM Agent agent.
 
 All tunable values live in .env (copied from .env.example at the project
 root). This module and the batch launchers both read that same file, so
-the Python agent and the batch-launched model server always agree —
+the Python agent and the batch-launched model server always agree -
 nothing model- or backend-specific is hardcoded here.
 
 Deliberately no external config library (python-dotenv, etc.) to keep
-dependencies minimal — .env has a trivial KEY=VALUE format.
+dependencies minimal - .env has a trivial KEY=VALUE format.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ CONFIG_ENV_EXAMPLE_PATH = ROOT / ".env.example"
 def _load_config_env(path: Path) -> dict[str, str]:
     """Parse a simple KEY=VALUE file. Ignores blank lines and lines
     starting with '#'. Does not support quoting, escaping, or multi-line
-    values — intentionally minimal."""
+    values - intentionally minimal."""
     values: dict[str, str] = {}
     if not path.is_file():
         return values

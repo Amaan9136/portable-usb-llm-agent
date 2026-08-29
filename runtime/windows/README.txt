@@ -1,4 +1,4 @@
-Portable USB LLM Agent — Windows Runtime Binary
+Portable USB LLM Agent - Windows Runtime Binary
 ========================================
 
 This folder must contain a llama.cpp Windows build (llama-server.exe)
@@ -20,10 +20,10 @@ also present. See the "Configuration reference" table in RUN.md.
 
 PICK ANY BACKEND
 -----------------------------------------------------------
-This project is backend-agnostic — llama-server.exe from a CPU-only,
+This project is backend-agnostic - llama-server.exe from a CPU-only,
 CUDA, Vulkan, ROCm, or any other llama.cpp Windows build all work the
 same way here. Choose whichever matches your hardware. Pick ONE backend
-and be consistent — don't mix DLLs from different backend builds in
+and be consistent - don't mix DLLs from different backend builds in
 this folder.
 
 WHAT TO DOWNLOAD
@@ -31,7 +31,7 @@ WHAT TO DOWNLOAD
 1. Go to the official llama.cpp GitHub Releases page:
    https://github.com/ggml-org/llama-cpp/releases
    (If that org/repo name has moved, search GitHub for "ggml-org llama.cpp"
-   or "ggerganov llama.cpp" — the project has been renamed/reorganized
+   or "ggerganov llama.cpp" - the project has been renamed/reorganized
    before, so verify you're on the actual upstream repo, not a fork.)
 
 2. Find a release asset matching your chosen backend, for example:
@@ -51,7 +51,7 @@ WHAT TO DOWNLOAD
      - llama-server.exe
    into this folder (runtime\windows\). If the release ships supporting
    DLLs (e.g. ggml.dll, backend runtime DLLs, or a loader DLL) alongside
-   the executable, copy those into this same folder too —
+   the executable, copy those into this same folder too -
    llama-server.exe will fail to start without them.
 
 4. If llama-server.exe doesn't automatically pick the right GPU device
@@ -61,7 +61,7 @@ WHAT TO DOWNLOAD
    to see available device indices/names, then set EXTRA_ARGS in .env,
    for example:
        EXTRA_ARGS=-dev Vulkan1
-   (the exact index depends on your system's device list — do not
+   (the exact index depends on your system's device list - do not
    assume any particular value is correct without checking
    --list-devices first).
 
@@ -73,7 +73,7 @@ Open a terminal in this folder and run:
 
 This should print a version string with no DLL-not-found errors. If you
 see "The code execution cannot proceed because <name>.dll was not found",
-you are missing a supporting DLL from the same release archive — go back
+you are missing a supporting DLL from the same release archive - go back
 to step 3 and copy the rest of the extracted files here.
 
 Then run scripts\verify_environment.py from the project root, which checks
@@ -92,5 +92,5 @@ CPU-ONLY FALLBACK
 If you don't have a supported GPU or don't want to set one up, download
 a plain CPU-only Windows build instead (same releases page, look for a
 "win-x64" asset without a backend name in it). Set GPU_LAYERS=0 in
-.env — the project will run entirely on CPU, more slowly. See RUN.md
+.env - the project will run entirely on CPU, more slowly. See RUN.md
 for expected performance implications.

@@ -2,11 +2,11 @@
 .venv/
 venv/
 
-# Model weights — large, downloaded separately, never committed
+# Model weights - large, downloaded separately, never committed
 models/*.gguf
 models/*.bin
 
-# llama.cpp runtime binaries — downloaded separately, platform-specific
+# llama.cpp runtime binaries - downloaded separately, platform-specific
 runtime/windows/*.exe
 runtime/windows/*.dll
 
