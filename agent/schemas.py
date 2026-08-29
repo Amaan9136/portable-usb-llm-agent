@@ -11,6 +11,16 @@ from pydantic import BaseModel, Field
 from config import MAX_TASK_LENGTH
 
 
+class ImportProjectRequest(BaseModel):
+    source_path: str = Field(min_length=1, max_length=4096)
+    project_name: Optional[str] = Field(default=None, max_length=80)
+
+
+class FileWriteRequest(BaseModel):
+    content: str
+    allow_overwrite: bool = True
+
+
 class AgentRequest(BaseModel):
     task: str = Field(min_length=3, max_length=MAX_TASK_LENGTH)
     project_name: Optional[str] = Field(

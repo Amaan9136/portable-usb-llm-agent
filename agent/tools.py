@@ -16,19 +16,25 @@ Threat model assumptions (see SECURITY.md for the full writeup):
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import subprocess
+import time
 import zipfile
 from pathlib import Path, PureWindowsPath
 
 from config import (
     ARTIFACTS,
     COMMAND_TIMEOUT_SECONDS,
+    IMPORT_SKIP_DIR_NAMES,
     MAX_FILE_READ_BYTES,
     MAX_FILE_WRITE_BYTES,
+    MAX_IMPORT_FILES,
+    MAX_IMPORT_TOTAL_BYTES,
     MAX_TOOL_OUTPUT_BYTES,
+    PROJECTS_META,
     WORKSPACE,
 )
 
@@ -310,6 +316,172 @@ def delete_path(*_args, **_kwargs) -> dict:
         "ok": False,
         "error": "Deletion is deliberately disabled. Delete files manually after review.",
     }
+
+
+_PROJECT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$")
+
+
+class ProjectImportError(ValueError):
+    """Raised when importing an external folder into workspace/ fails
+    validation - never a partial/silent failure."""
+
+
+def _sanitize_project_name(name: str) -> str:
+    name = (name or "").strip()
+    if not name:
+        raise ProjectImportError("Project name cannot be empty.")
+    if not _PROJECT_NAME_RE.match(name):
+        raise ProjectImportError(
+            "Project name may only contain letters, numbers, spaces, "
+            "dots, underscores, and hyphens (max 80 chars)."
+        )
+    _reject_reserved_names(name)
+    return name
+
+
+def _load_projects_meta() -> dict:
+    if not PROJECTS_META.is_file():
+        return {"projects": {}}
+    try:
+        return json.loads(PROJECTS_META.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"projects": {}}
+
+
+def _save_projects_meta(meta: dict) -> None:
+    PROJECTS_META.parent.mkdir(parents=True, exist_ok=True)
+    PROJECTS_META.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+
+def list_projects() -> dict:
+    meta = _load_projects_meta()
+    projects = []
+    for name, info in sorted(meta.get("projects", {}).items()):
+        path = WORKSPACE / name
+        projects.append(
+            {
+                "name": name,
+                "source_path": info.get("source_path"),
+                "imported_at": info.get("imported_at"),
+                "exists": path.is_dir(),
+            }
+        )
+    return {"ok": True, "projects": projects}
+
+
+def import_project(source_path: str, project_name: str | None = None) -> dict:
+    """Copy an external local folder into workspace/<project_name>/ so
+    the agent's containment guarantee (never touch anything outside
+    WORKSPACE) is preserved while still letting the UI 'open any local
+    folder'. Never moves or modifies the original folder - copy only.
+    """
+    source = Path(source_path).expanduser()
+    try:
+        source = source.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        return {"ok": False, "error": f"Source folder not found: {exc}"}
+
+    if not source.is_dir():
+        return {"ok": False, "error": "Source path is not a directory."}
+
+    try:
+        source.relative_to(WORKSPACE)
+        return {"ok": False, "error": "Source is already inside workspace/."}
+    except ValueError:
+        pass
+
+    name = project_name or source.name
+    try:
+        name = _sanitize_project_name(name)
+    except ProjectImportError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    dest = (WORKSPACE / name).resolve()
+    try:
+        dest.relative_to(WORKSPACE)
+    except ValueError:
+        return {"ok": False, "error": "Invalid project name."}
+
+    if dest.exists():
+        return {"ok": False, "error": f"A project named '{name}' already exists."}
+
+    file_count = 0
+    total_bytes = 0
+    for item in source.rglob("*"):
+        if any(part in IMPORT_SKIP_DIR_NAMES for part in item.relative_to(source).parts):
+            continue
+        if item.is_file():
+            file_count += 1
+            try:
+                total_bytes += item.stat().st_size
+            except OSError:
+                continue
+            if file_count > MAX_IMPORT_FILES:
+                return {
+                    "ok": False,
+                    "error": f"Folder has more than {MAX_IMPORT_FILES} files - too large to import.",
+                }
+            if total_bytes > MAX_IMPORT_TOTAL_BYTES:
+                return {
+                    "ok": False,
+                    "error": f"Folder exceeds the {MAX_IMPORT_TOTAL_BYTES // 1_000_000} MB import limit.",
+                }
+
+    def _ignore(dirpath: str, names: list[str]) -> set[str]:
+        return {n for n in names if n in IMPORT_SKIP_DIR_NAMES}
+
+    try:
+        shutil.copytree(source, dest, ignore=_ignore)
+    except OSError as exc:
+        return {"ok": False, "error": f"Copy failed: {exc}"}
+
+    meta = _load_projects_meta()
+    meta.setdefault("projects", {})[name] = {
+        "source_path": str(source),
+        "imported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+    _save_projects_meta(meta)
+
+    return {"ok": True, "project": name, "files_imported": file_count}
+
+
+def file_tree(relative_path: str = ".") -> dict:
+    """Like list_files, but returns a nested tree shape the UI's file
+    explorer can render directly instead of a flat path list."""
+    try:
+        path = safe_workspace_path(relative_path)
+    except PathSecurityError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    if not path.exists():
+        return {"ok": False, "error": "Path does not exist."}
+
+    def _build(node: Path) -> dict:
+        entry = {"name": node.name or str(WORKSPACE.name), "path": str(node.relative_to(WORKSPACE))}
+        if node.is_dir():
+            children = []
+            try:
+                items = sorted(
+                    node.iterdir(),
+                    key=lambda p: (p.is_file(), p.name.lower()),
+                )
+            except OSError:
+                items = []
+            for child in items:
+                if child.name == ".git" or child.name == ".projects.json":
+                    continue
+                children.append(_build(child))
+            entry["type"] = "dir"
+            entry["children"] = children
+        else:
+            entry["type"] = "file"
+            try:
+                entry["size"] = node.stat().st_size
+            except OSError:
+                entry["size"] = 0
+        return entry
+
+    return {"ok": True, "tree": _build(path)}
 
 
 def safe_artifact_path(filename: str) -> Path:

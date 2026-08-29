@@ -91,13 +91,55 @@ OR
 ```
 http://127.0.0.1:8787/redoc
 ```
-(or whatever `AGENT_PORT` you set) for interactive API docs, or run the
-smoke test from a third window:
-```
-python scripts\smoke_test.py
-```
+(or whatever `AGENT_PORT` you set) for interactive API docs.
+
+For a full graphical workbench instead of raw API docs, use
+`Start-UI.bat` (see "Using the UI" below) - it launches the model
+server, the agent, and opens the cosmic neon UI in your browser in one
+step, and shows you connection status live instead of a manual check.
 
 To stop both servers, close their console windows or run `Stop-All.bat`.
+
+## Using the UI
+
+`Start-UI.bat` launches the model server and agent API (same
+sequencing as `Start-All.bat`) and then opens a browser to the agent's
+built-in web UI at `http://127.0.0.1:8787/`. From there you can:
+
+- **Open Project** - paste the path to any local folder. It's copied
+  into `workspace/<name>/` (the original folder is never modified),
+  keeping the agent's sandboxing guarantee intact while still letting
+  you work with any project on your machine.
+- Browse that project's files in the left-hand explorer.
+- Chat with the agent in the center panel. Tool calls stream in live,
+  tagged by pipeline role (planner / implementer / reviewer / tester /
+  packager), and the right-hand viewer updates in real time whenever a
+  file is written.
+- Toggle "Allow commands", "Allow overwrite", and "Package ZIP" the
+  same way you would with the `allow_commands` / `allow_overwrite` /
+  `create_zip` fields in a raw `/agent` request.
+
+### Command-line client
+
+Everything the UI does is also available from a terminal via `cli.py`,
+which talks to the same running agent server:
+
+```
+python cli.py --list-projects
+python cli.py --import "C:\path\to\folder" --name my-app
+python cli.py --task "add input validation" --project my-app
+python cli.py --task "run the test suite" --project my-app --allow-commands
+python cli.py --tree --project my-app
+python cli.py --read my-app/src/main.py
+```
+
+On macOS/Linux, or if you already have the model server running and
+just want the agent + UI, `start_ui.py` is a cross-platform equivalent
+of `Start-UI.bat` for that half of the process:
+
+```
+python start_ui.py
+```
 
 ## Downloading a model
 
@@ -242,17 +284,6 @@ Invoke-WebRequest http://127.0.0.1:8787/artifacts/calculator.zip -OutFile calcul
 ```
 
 Read `SECURITY.md` before setting `allow_commands: true` routinely.
-
-## Running the test suite
-
-```
-cd agent
-pip install -r requirements.txt
-pytest tests/ -v
-```
-Tests mock the LLM server entirely (no running model server backend
-required) so the suite runs fast and fully offline - consistent with
-this project's own no-network-during-operation principle.
 
 ## Troubleshooting
 

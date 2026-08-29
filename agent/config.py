@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKSPACE = (ROOT / "workspace").resolve()
 ARTIFACTS = (ROOT / "artifacts").resolve()
 LOGS = (ROOT / "logs").resolve()
+PROJECTS_META = (ROOT / "workspace" / ".projects.json").resolve()
 CONFIG_ENV_PATH = ROOT / ".env"
 CONFIG_ENV_EXAMPLE_PATH = ROOT / ".env.example"
 
@@ -78,6 +79,17 @@ MAX_TASK_LENGTH = 12_000
 MAX_FILE_READ_BYTES = 500_000
 MAX_FILE_WRITE_BYTES = 2_000_000
 MAX_TOOL_OUTPUT_BYTES = 12_000
+
+# UI-facing import limits. Importing an external folder into workspace/
+# copies it - these caps stop someone accidentally mirroring a huge
+# directory (e.g. a repo with node_modules/.git history) onto the USB
+# device the whole toolchain is meant to live on.
+MAX_IMPORT_FILES = 5_000
+MAX_IMPORT_TOTAL_BYTES = 300_000_000  # 300 MB
+IMPORT_SKIP_DIR_NAMES = {
+    ".git", "node_modules", "__pycache__", ".venv", "venv",
+    "dist", "build", ".next", ".pytest_cache", ".mypy_cache",
+}
 
 for _dir in (WORKSPACE, ARTIFACTS, LOGS):
     _dir.mkdir(parents=True, exist_ok=True)

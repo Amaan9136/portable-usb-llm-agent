@@ -21,10 +21,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any
+import time
+from typing import Any, Iterator
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from openai import APIConnectionError, OpenAI
 from pydantic import ValidationError
 
@@ -37,9 +40,28 @@ from config import (
     LOGS,
     MAX_AGENT_TURNS,
     TOOL_MODE,
+    WORKSPACE,
 )
-from schemas import AgentRequest, AgentResponse, FallbackAction, ToolCallTrace
-from tools import PathSecurityError, create_zip, list_files, read_file, run_command, safe_artifact_path, write_file
+from schemas import (
+    AgentRequest,
+    AgentResponse,
+    FallbackAction,
+    FileWriteRequest,
+    ImportProjectRequest,
+    ToolCallTrace,
+)
+from tools import (
+    PathSecurityError,
+    create_zip,
+    file_tree,
+    import_project,
+    list_files,
+    list_projects,
+    read_file,
+    run_command,
+    safe_artifact_path,
+    write_file,
+)
 
 # --- Logging -----------------------------------------------------------
 # Structured, but deliberately excludes task text, file content, command
@@ -56,6 +78,18 @@ logging.basicConfig(
 logger = logging.getLogger("Portable USB LLM Agent")
 
 app = FastAPI(title="Portable USB LLM Agent Agent", version="1.0.0")
+
+# Loopback-only UI talks to this API from the same machine (a file:// or
+# 127.0.0.1-served page). CORS is opened for local origins only - this
+# process never binds anywhere but 127.0.0.1 (see SECURITY.md), so this
+# does not expose anything to the network.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"http://(127\.0\.0\.1|localhost)(:\d+)?",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
 
 with open(os.path.join(os.path.dirname(__file__), "system_prompt.txt"), encoding="utf-8") as f:
@@ -252,6 +286,156 @@ def _run_native(request: AgentRequest) -> AgentResponse:
     )
 
 
+_ROLE_SEQUENCE = ["planner", "implementer", "reviewer", "tester", "packager"]
+_TOOL_TO_ROLE_HINT = {
+    "list_files": "planner",
+    "read_file": "planner",
+    "write_file": "implementer",
+    "run_command": "tester",
+    "create_zip": "packager",
+}
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+def _stream_native(request: AgentRequest) -> Iterator[str]:
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": request.task},
+    ]
+    changed_files: list[str] = []
+    artifact_filename: str | None = None
+    seen_role = "planner"
+
+    yield _sse("start", {"turns_allowed": MAX_AGENT_TURNS, "roles": _ROLE_SEQUENCE})
+
+    for turn in range(MAX_AGENT_TURNS):
+        yield _sse("turn_start", {"turn": turn})
+        try:
+            stream = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=messages,
+                tools=TOOLS,
+                tool_choice="auto",
+                temperature=0.2,
+                stream=True,
+            )
+        except APIConnectionError as exc:
+            yield _sse(
+                "error",
+                {
+                    "message": (
+                        f"Could not reach the local model server at {LLM_BASE_URL}. "
+                        f"Is the model server running? ({exc})"
+                    ),
+                },
+            )
+            return
+
+        content_parts: list[str] = []
+        tool_call_chunks: dict[int, dict[str, Any]] = {}
+        finish_reason = None
+
+        try:
+            for chunk in stream:
+                choice = chunk.choices[0]
+                delta = choice.delta
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
+                if delta and delta.content:
+                    content_parts.append(delta.content)
+                    yield _sse("token", {"turn": turn, "text": delta.content})
+                if delta and delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        slot = tool_call_chunks.setdefault(
+                            tc.index, {"id": None, "name": None, "arguments": ""}
+                        )
+                        if tc.id:
+                            slot["id"] = tc.id
+                        if tc.function and tc.function.name:
+                            slot["name"] = tc.function.name
+                        if tc.function and tc.function.arguments:
+                            slot["arguments"] += tc.function.arguments
+        except APIConnectionError as exc:
+            yield _sse("error", {"message": f"Lost connection to model server mid-stream: {exc}"})
+            return
+
+        full_content = "".join(content_parts)
+        assistant_message: dict[str, Any] = {"role": "assistant", "content": full_content or None}
+        if tool_call_chunks:
+            assistant_message["tool_calls"] = [
+                {
+                    "id": slot["id"] or f"call_{i}",
+                    "type": "function",
+                    "function": {"name": slot["name"], "arguments": slot["arguments"] or "{}"},
+                }
+                for i, slot in sorted(tool_call_chunks.items())
+            ]
+        messages.append(assistant_message)
+
+        if not tool_call_chunks:
+            yield _sse(
+                "final_answer",
+                {
+                    "ok": True,
+                    "text": full_content,
+                    "changed_files": changed_files,
+                    "artifact_filename": artifact_filename,
+                },
+            )
+            return
+
+        for i, slot in sorted(tool_call_chunks.items()):
+            name = slot["name"] or "unknown"
+            role = _TOOL_TO_ROLE_HINT.get(name, seen_role)
+            seen_role = role
+            try:
+                arguments = json.loads(slot["arguments"] or "{}")
+            except json.JSONDecodeError:
+                arguments = {}
+                result = {"ok": False, "error": "Model produced invalid JSON arguments."}
+            else:
+                yield _sse(
+                    "tool_call_start",
+                    {"turn": turn, "role": role, "tool": name, "arguments": arguments},
+                )
+                try:
+                    result = _dispatch_tool(name, arguments, request)
+                except PathSecurityError as exc:
+                    result = {"ok": False, "error": str(exc)}
+                except Exception as exc:  # defensive: never let a tool crash the stream
+                    logger.exception("tool=%s failed", name)
+                    result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+            if name == "write_file" and result.get("ok"):
+                changed_files.append(result["written"])
+            if name == "create_zip" and result.get("ok"):
+                artifact_filename = result["artifact"]
+
+            yield _sse(
+                "tool_call_end",
+                {"turn": turn, "role": role, "tool": name, "arguments": arguments, "result": result},
+            )
+
+            call_id = slot["id"] or f"call_{i}"
+            messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result)})
+
+        if finish_reason == "length":
+            yield _sse("warning", {"message": "Model hit its output length limit mid-turn."})
+
+    yield _sse(
+        "final_answer",
+        {
+            "ok": False,
+            "text": "Turn limit reached. Review the trace and narrow the task.",
+            "changed_files": changed_files,
+            "artifact_filename": artifact_filename,
+        },
+    )
+
+
 def _run_fallback(request: AgentRequest) -> AgentResponse:
     """Constrained single-JSON-action-per-turn loop for models/templates
     that don't reliably support native tool calling."""
@@ -379,3 +563,78 @@ def download_artifact(filename: str) -> FileResponse:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return FileResponse(path, media_type="application/zip", filename=path.name)
+
+
+@app.post("/agent/stream")
+def run_agent_stream(request: AgentRequest) -> StreamingResponse:
+    logger.info(
+        "agent stream request received: create_zip=%s allow_commands=%s allow_overwrite=%s",
+        request.create_zip,
+        request.allow_commands,
+        request.allow_overwrite,
+    )
+    if TOOL_MODE == "fallback":
+        def _fallback_wrapper() -> Iterator[str]:
+            yield _sse("start", {"turns_allowed": MAX_AGENT_TURNS, "roles": _ROLE_SEQUENCE})
+            response = _run_fallback(request)
+            for trace in response.trace:
+                role = _TOOL_TO_ROLE_HINT.get(trace.tool, "planner")
+                yield _sse(
+                    "tool_call_end",
+                    {"turn": 0, "role": role, "tool": trace.tool, "arguments": trace.arguments, "result": trace.result},
+                )
+            yield _sse(
+                "final_answer",
+                {
+                    "ok": response.ok,
+                    "text": response.final_answer,
+                    "changed_files": response.changed_files,
+                    "artifact_filename": response.artifact_filename,
+                },
+            )
+
+        return StreamingResponse(_fallback_wrapper(), media_type="text/event-stream")
+
+    return StreamingResponse(_stream_native(request), media_type="text/event-stream")
+
+
+@app.get("/projects")
+def get_projects() -> dict:
+    return list_projects()
+
+
+@app.post("/projects/import")
+def post_import_project(request: ImportProjectRequest) -> dict:
+    result = import_project(request.source_path, request.project_name)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Import failed."))
+    return result
+
+
+@app.get("/tree")
+def get_tree(relative_path: str = ".") -> dict:
+    result = file_tree(relative_path)
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("error", "Not found."))
+    return result
+
+
+@app.get("/file")
+def get_file(relative_path: str) -> dict:
+    result = read_file(relative_path)
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("error", "Not found."))
+    return result
+
+
+@app.put("/file")
+def put_file(relative_path: str, body: FileWriteRequest) -> dict:
+    result = write_file(relative_path, body.content, allow_overwrite=body.allow_overwrite)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Write failed."))
+    return result
+
+
+_UI_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui")
+if os.path.isdir(_UI_DIR):
+    app.mount("/", StaticFiles(directory=_UI_DIR, html=True), name="ui")
