@@ -51,6 +51,7 @@ if exist ".env" (
 
 echo.
 echo Agent will be available at: http://127.0.0.1:%AGENT_PORT%/docs
+echo Docs will be available at: http://127.0.0.1:%AGENT_PORT%/redoc
 echo Make sure Start-Model.bat is already running in another window.
 echo.
 

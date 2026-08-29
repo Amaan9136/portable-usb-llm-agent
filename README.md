@@ -37,7 +37,7 @@ The model and the llama.cpp binary are excluded deliberately - see
 1. Copy `.env.example` to `.env` and set `MODEL_PATH` / `LLM_MODEL_NAME` (and any GPU/backend settings) for your setup.
 2. Get a server backend: place a `llama-server.exe` build in `runtime\windows\`, **or** point `LLAMA_EXE` in `.env` at an already-installed `llama.exe` (defaults to resolving `llama.exe` on PATH). `BACKEND=auto` in `.env` picks whichever is available. Also place your `.gguf` model at the path from `MODEL_PATH`.
 3. Run `Start-Model.bat`, then `Start-Agent.bat` in a second window.
-4. Open `http://127.0.0.1:8787/docs` or run `python scripts\smoke_test.py`.
+4. Open `http://127.0.0.1:8787/docs`, `http://127.0.0.1:8787/redoc` or run `python scripts\smoke_test.py`.
 
 Full setup, configuration reference, GPU tuning, API examples, and
 troubleshooting live in **[RUN.md](RUN.md)** - read that before your

@@ -87,6 +87,10 @@ Once both are running, open:
 ```
 http://127.0.0.1:8787/docs
 ```
+OR
+```
+http://127.0.0.1:8787/redoc
+```
 (or whatever `AGENT_PORT` you set) for interactive API docs, or run the
 smoke test from a third window:
 ```
