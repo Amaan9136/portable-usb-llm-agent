@@ -26,7 +26,7 @@ single `.env` file — nothing is hardcoded to a specific model. See
 | Provided in this ZIP | You download separately |
 |---|---|
 | Agent source code, tests, docs | A GGUF model of your choice |
-| Batch launch scripts | A `llama-server.exe` build matching your backend (CPU/CUDA/Vulkan/etc.) |
+| Batch launch scripts | Either a `llama-server.exe` build matching your backend (CPU/CUDA/Vulkan/etc.), or an already-installed `llama.exe` (with a `serve` subcommand) — either works |
 | Empty `workspace/`, `artifacts/`, `logs/`, `models/` folders | — |
 
 The model and the llama.cpp binary are excluded deliberately — see
@@ -35,7 +35,7 @@ The model and the llama.cpp binary are excluded deliberately — see
 ## Quick start
 
 1. Copy `.env.example` to `.env` and set `MODEL_PATH` / `LLM_MODEL_NAME` (and any GPU/backend settings) for your setup.
-2. Place a `llama-server.exe` build in `runtime\windows\` and your `.gguf` model at the path from `MODEL_PATH`.
+2. Get a server backend: place a `llama-server.exe` build in `runtime\windows\`, **or** point `LLAMA_EXE` in `.env` at an already-installed `llama.exe` (defaults to resolving `llama.exe` on PATH). `BACKEND=auto` in `.env` picks whichever is available. Also place your `.gguf` model at the path from `MODEL_PATH`.
 3. Run `Start-Model.bat`, then `Start-Agent.bat` in a second window.
 4. Open `http://127.0.0.1:8787/docs` or run `python scripts\smoke_test.py`.
 
@@ -48,7 +48,7 @@ first run.
 ```
 Portable USB LLM Agent/
 ├── models/                  # place your .gguf model here (not included)
-├── runtime/windows/         # place llama-server.exe here (not included)
+├── runtime/windows/         # place llama-server.exe here (not needed if using an installed llama.exe)
 ├── agent/
 │   ├── app.py               # FastAPI app: /health, /agent, /artifacts
 │   ├── config.py            # .env loader, shared by agent + docs

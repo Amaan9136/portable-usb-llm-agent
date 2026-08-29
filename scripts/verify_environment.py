@@ -1,7 +1,8 @@
 """
 Verifies the local environment is ready to run Portable USB LLM Agent:
   - Python version
-  - llama-server.exe present in runtime/windows/
+  - A usable backend: runtime/windows/llama-server.exe, or a llama.exe
+    ("serve" subcommand) build, per BACKEND in .env
   - Model file present at MODEL_PATH (from .env / .env.example)
   - Free disk space on the drive this project lives on
   - nvidia-smi availability (optional — informational only)
@@ -39,13 +40,19 @@ def _load_env(path: Path) -> dict[str, str]:
     return values
 
 
+def _configured_values() -> dict[str, str]:
+    return {**_load_env(ENV_EXAMPLE_PATH), **_load_env(ENV_PATH)}
+
+
 def _configured_model_path() -> Path:
-    values = {**_load_env(ENV_EXAMPLE_PATH), **_load_env(ENV_PATH)}
-    raw = values.get("MODEL_PATH", "models\\your-model.gguf")
+    raw = _configured_values().get("MODEL_PATH", "models\\your-model.gguf")
     return ROOT / raw.replace("\\", "/")
 
 
 EXPECTED_MODEL = _configured_model_path()
+_CONFIG = _configured_values()
+BACKEND = _CONFIG.get("BACKEND", "auto").strip().lower()
+LLAMA_EXE = _CONFIG.get("LLAMA_EXE", "llama.exe").strip()
 
 
 def check_python() -> tuple[bool, str]:
@@ -57,7 +64,7 @@ def check_python() -> tuple[bool, str]:
     return True, label
 
 
-def check_llama_server() -> tuple[bool, str]:
+def _check_llama_server_exe() -> tuple[bool, str]:
     if not RUNTIME_EXE.is_file():
         return False, f"Not found at {RUNTIME_EXE}. See runtime/windows/README.txt."
 
@@ -73,6 +80,45 @@ def check_llama_server() -> tuple[bool, str]:
         return True, f"Found. {summary}"
     except Exception as exc:  # noqa: BLE001
         return False, f"Found but failed to run --version: {exc}"
+
+
+def _check_llama_exe() -> tuple[bool, str]:
+    resolved = shutil.which(LLAMA_EXE) or (LLAMA_EXE if Path(LLAMA_EXE).is_file() else None)
+    if not resolved:
+        return False, f'"{LLAMA_EXE}" not found on PATH or as a direct path. Set LLAMA_EXE in .env.'
+
+    try:
+        result = subprocess.run(
+            [resolved, "serve", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        version_text = (result.stdout + result.stderr).strip().splitlines()
+        summary = version_text[0] if version_text else "(no output)"
+        return True, f"Found at {resolved}. {summary}"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Found at {resolved} but failed to run 'serve --help': {exc}"
+
+
+def check_backend() -> tuple[bool, str]:
+    if BACKEND == "llama-server":
+        return _check_llama_server_exe()
+    if BACKEND == "llama-cli":
+        return _check_llama_exe()
+    if BACKEND != "auto":
+        return False, f'Unknown BACKEND="{BACKEND}" in .env (expected auto, llama-server, or llama-cli).'
+
+    ok, detail = _check_llama_server_exe()
+    if ok:
+        return True, f"[llama-server] {detail}"
+    ok, detail = _check_llama_exe()
+    if ok:
+        return True, f"[llama-cli] {detail}"
+    return False, (
+        f"Neither runtime\\windows\\llama-server.exe nor \"{LLAMA_EXE}\" (llama-cli) "
+        "was found. See runtime/windows/README.txt."
+    )
 
 
 def check_model_file() -> tuple[bool, str]:
@@ -108,7 +154,7 @@ def check_nvidia_smi() -> tuple[bool, str]:
 def main() -> int:
     checks = [
         ("Python version", check_python),
-        ("llama-server.exe", check_llama_server),
+        ("Model server backend", check_backend),
         ("Model file", check_model_file),
         ("Free disk space", check_disk_space),
         ("nvidia-smi (optional)", check_nvidia_smi),

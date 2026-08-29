@@ -69,9 +69,10 @@ Portable USB LLM Agent — Model Download Guide
 =====================================
 
 This project is model-agnostic: any GGUF-format model works, as long as
-llama-server.exe can load it and your hardware can run it. Pick a model
-that fits your GPU/VRAM (or CPU/RAM if running CPU-only) and your use
-case (e.g. a coding-focused instruct model for this agent's workflow).
+your chosen backend (llama-server.exe or llama.exe) can load it and
+your hardware can run it. Pick a model that fits your GPU/VRAM (or
+CPU/RAM if running CPU-only) and your use case (e.g. a coding-focused
+instruct model for this agent's workflow).
 
 WHERE TO GET ONE
 ------------------
@@ -89,7 +90,8 @@ WHERE TO GET ONE
    "-00001-of-00002.gguf" etc.), download ALL parts, then merge with:
        llama-gguf-split --merge <part1> <merged-output.gguf>
    (ships alongside llama-server.exe in most llama.cpp release archives —
-   check runtime\\windows\\ after you've placed your build there.)
+   check runtime\\windows\\ after you've placed your build there, or
+   alongside your llama.exe installation if using that backend instead.)
 
 4. Place the final single .gguf file at the path configured by
    MODEL_PATH in your .env (currently resolves to):
@@ -98,9 +100,9 @@ WHERE TO GET ONE
    match — Start-Model.bat, verify_environment.py, and this script all
    read that same setting.
 
-5. Also set LLM_MODEL_NAME in .env to the model name string
-   llama-server.exe reports for the file you loaded — check
-   `/v1/models` on the running server, or its startup log, if unsure.
+5. Also set LLM_MODEL_NAME in .env to the model name string your
+   backend reports for the file you loaded — check `/v1/models` on the
+   running server, or its startup log, if unsure.
 
 6. Sanity-check the downloaded file size against what the repository
    lists for that quantization. A drastically smaller file usually means

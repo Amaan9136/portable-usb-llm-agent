@@ -9,7 +9,7 @@ short overview and project structure.
 |---|---|
 | This project's source, docs, scripts | < 5 MB |
 | `.venv` (created on first Start-Agent.bat run) | ~150–300 MB |
-| llama-server.exe + supporting DLLs | ~50–300 MB depending on backend |
+| llama-server.exe + supporting DLLs (skip if using an already-installed llama.exe) | ~50–300 MB depending on backend |
 | Your chosen GGUF model | varies — a few hundred MB to tens of GB depending on model size/quantization |
 | Working headroom for generated projects/artifacts | plan for 1–2 GB+ |
 
@@ -25,7 +25,7 @@ periodically on smaller drives.
    python scripts\verify_environment.py
    ```
    This checks Python version, disk space, and reports what's missing.
-   It will report the model and `llama-server.exe` as missing on a
+   It will report the model and model server backend as missing on a
    fresh checkout — that's expected until you complete steps 2–4.
 
 2. **Copy the config template** and edit it for your setup:
@@ -36,12 +36,22 @@ periodically on smaller drives.
    match the model you plan to use. See "Configuration reference" below
    for every key.
 
-3. **Get a `llama-server.exe` build matching your backend** (CPU-only,
-   CUDA, Vulkan, or another backend llama.cpp publishes Windows builds
-   for). See `runtime\windows\README.txt` for exact download
-   instructions and the official release URL to use. Place
-   `llama-server.exe` (and any supporting DLLs from the same release
-   archive) into `runtime\windows\`.
+3. **Get a model server backend.** Two options — pick whichever applies:
+   - **Already have a `llama.exe` build installed** (e.g. one that
+     supports `llama.exe serve -m ... -ngl ... -t ...`)? Nothing to
+     install. `Start-Model.bat` auto-detects and uses it via
+     `LLAMA_EXE` in `.env` (default `llama.exe`, resolved on PATH; set
+     a full path if it isn't on PATH). Set `BACKEND=llama-cli` in
+     `.env` to force this even if `runtime\windows\llama-server.exe`
+     also exists.
+   - **Otherwise, get a `llama-server.exe` build matching your
+     hardware** (CPU-only, CUDA, Vulkan, or another backend llama.cpp
+     publishes Windows builds for). See `runtime\windows\README.txt`
+     for exact download instructions and the official release URL to
+     use. Place `llama-server.exe` (and any supporting DLLs from the
+     same release archive) into `runtime\windows\`.
+   `BACKEND=auto` (the default) prefers `llama-server.exe` when present
+   and falls back to `LLAMA_EXE` otherwise.
 
 4. **Download a model.** See "Downloading a model" below. Place the
    resulting file at the path you set for `MODEL_PATH` in `.env`.
@@ -88,9 +98,10 @@ To stop both servers, close their console windows or run `Stop-All.bat`.
 ## Downloading a model
 
 This project is not tied to any specific model — any GGUF-format model
-works, as long as `llama-server.exe` can load it and your hardware can
-run it. A coding-focused instruct model is a natural fit for this
-agent's workflow, but the choice is yours.
+works, as long as your chosen backend (`llama-server.exe` or
+`llama.exe`) can load it and your hardware can run it. A coding-focused
+instruct model is a natural fit for this agent's workflow, but the
+choice is yours.
 
 See the full walkthrough printed by:
 ```
@@ -114,13 +125,15 @@ duplicating values.
 | Key | Read by | Meaning |
 |---|---|---|
 | `MODEL_PATH` | Start-Model.bat, scripts | Path to your `.gguf` file, relative to project root. |
-| `CONTEXT_SIZE` | Start-Model.bat | Context window size passed to llama-server (`-c`). |
-| `GPU_LAYERS` | Start-Model.bat | Layers offloaded to GPU (`-ngl`). `0` = CPU-only. |
-| `CPU_THREADS` | Start-Model.bat | CPU threads passed to llama-server (`-t`). |
-| `MODEL_PORT` | Start-Model.bat, agent, scripts | Port llama-server binds to on `127.0.0.1`. |
-| `EXTRA_ARGS` | Start-Model.bat | Extra flags appended verbatim to the llama-server command line (backend-specific, e.g. a Vulkan device selector). |
+| `CONTEXT_SIZE` | Start-Model.bat | Context window size passed to llama-server (`-c`). Only applies to the `llama-server` backend — `llama-cli` doesn't take it in the same form (add via `EXTRA_ARGS` if your build supports it). |
+| `GPU_LAYERS` | Start-Model.bat | Layers offloaded to GPU (`-ngl`). `0` = CPU-only. Passed to both backends. |
+| `CPU_THREADS` | Start-Model.bat | CPU threads (`-t`). Passed to both backends. |
+| `MODEL_PORT` | Start-Model.bat, agent, scripts | Port the model server binds to on `127.0.0.1`. Passed as `--port` to `llama-server`; not passed to `llama-cli` (some `llama.exe serve` builds don't accept it the same way — set it via `EXTRA_ARGS` if yours does and you need a non-default port). |
+| `BACKEND` | Start-Model.bat, scripts\verify_environment.py | Which server to launch: `auto` (default, prefers `llama-server.exe` if present, else falls back to `LLAMA_EXE`), `llama-server`, or `llama-cli`. |
+| `LLAMA_EXE` | Start-Model.bat, scripts\verify_environment.py | Path or bare name of the `llama.exe`-style CLI build, used for the `llama-cli` backend. Defaults to `llama.exe` resolved via PATH. |
+| `EXTRA_ARGS` | Start-Model.bat | Extra flags appended verbatim to whichever backend's command line (backend-specific, e.g. a Vulkan device selector). |
 | `AGENT_PORT` | Start-Agent.bat, agent | Port the FastAPI agent binds to on `127.0.0.1`. |
-| `LLM_MODEL_NAME` | agent | Model name string sent in `/v1/chat/completions` requests; must match what llama-server reports for your loaded model. |
+| `LLM_MODEL_NAME` | agent | Model name string sent in `/v1/chat/completions` requests; must match what your chosen backend reports for your loaded model. |
 | `TOOL_MODE` | agent | `native` (OpenAI-style tool calls) or `fallback` (single JSON action per turn — more reliable on small/quantized models). |
 | `MAX_AGENT_TURNS` | agent | Max turns in the agent's sequential planner→implementer→reviewer→tester→packager loop. |
 | `COMMAND_TIMEOUT_SECONDS` | agent | Timeout for any single allowlisted shell command the agent runs. |
@@ -233,7 +246,7 @@ cd agent
 pip install -r requirements.txt
 pytest tests/ -v
 ```
-Tests mock the LLM server entirely (no running `llama-server.exe`
+Tests mock the LLM server entirely (no running model server backend
 required) so the suite runs fast and fully offline — consistent with
 this project's own no-network-during-operation principle.
 
@@ -241,7 +254,18 @@ this project's own no-network-during-operation principle.
 
 **"runtime\windows\llama-server.exe was not found"**
 You haven't placed the binary yet, or placed it in the wrong folder.
-See `runtime\windows\README.txt`.
+See `runtime\windows\README.txt`. If you meant to use an installed
+`llama.exe` instead, set `BACKEND=llama-cli` in `.env` (or leave
+`BACKEND=auto`, which falls back to it automatically).
+
+**"LLAMA_EXE ... was not found on PATH or as a direct path"**
+Set `LLAMA_EXE` in `.env` to the full path of your `llama.exe`, or set
+`BACKEND=llama-server` in `.env` to use `runtime\windows\llama-server.exe`
+instead. Confirm the binary works standalone with
+`<path>\llama.exe serve --help`.
+
+**"Unknown BACKEND value"**
+`BACKEND` in `.env` must be `auto`, `llama-server`, or `llama-cli`.
 
 **"Model file not found at ..."**
 Check that `MODEL_PATH` in `.env` points at the exact file you
@@ -276,3 +300,11 @@ slow *generation*.
 You only copied the executable and not its supporting DLLs from the
 release archive. Go back and copy the entire extracted release folder's
 contents (or at least all `.dll` files) into `runtime\windows\`.
+
+**llama-cli backend starts but the agent can't reach it / wrong port**
+Some `llama.exe serve` builds pick their own default port rather than
+honoring `MODEL_PORT` the way `llama-server.exe` does. Run
+`llama.exe serve --help` to check for a `--port`/`--host` flag; if one
+exists, add it via `EXTRA_ARGS` (e.g. `EXTRA_ARGS=--port 8080`) so it
+matches `MODEL_PORT` in `.env`, which is what the agent actually
+connects to.

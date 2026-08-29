@@ -2,9 +2,21 @@ Portable USB LLM Agent — Windows Runtime Binary
 ========================================
 
 This folder must contain a llama.cpp Windows build (llama-server.exe)
-before you can run Start-Model.bat. It is NOT included in this ZIP (it
-is a large compiled binary with its own license, and bundling it would
-make this archive stale the moment upstream ships a new release).
+before you can run Start-Model.bat with BACKEND=llama-server. It is NOT
+included in this ZIP (it is a large compiled binary with its own
+license, and bundling it would make this archive stale the moment
+upstream ships a new release).
+
+ALTERNATIVE: LLAMA.EXE ALREADY ON YOUR MACHINE
+-----------------------------------------------------------
+If you already have a "llama.exe" CLI build installed (e.g. one that
+supports a `llama.exe serve -m ... -ngl ... -t ...` subcommand), you do
+NOT need anything in this folder. Start-Model.bat auto-detects: if this
+folder has no llama-server.exe, it falls back to running LLAMA_EXE
+(default "llama.exe", resolved via PATH) with the "serve" subcommand
+instead. Set LLAMA_EXE in .env to a full path if it isn't on PATH, or
+set BACKEND=llama-cli to force this mode even when llama-server.exe is
+also present. See the "Configuration reference" table in RUN.md.
 
 PICK ANY BACKEND
 -----------------------------------------------------------
