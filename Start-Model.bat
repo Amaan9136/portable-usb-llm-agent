@@ -36,10 +36,21 @@ set "LLAMA_EXE=llama.exe"
 if exist ".env" (
     for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
         if not "%%A"=="" if not "%%B"=="" (
-            set "%%A=%%B"
+            set "_KEY=%%A"
+            set "_VAL=%%B"
+            for /f "tokens=* delims= " %%K in ("!_KEY!") do set "_KEY=%%K"
+            for /f "tokens=* delims= " %%V in ("!_VAL!") do set "_VAL=%%V"
+            if "!_VAL:~-1!"==" " (
+                for /l %%Z in (1,1,20) do if "!_VAL:~-1!"==" " set "_VAL=!_VAL:~0,-1!"
+            )
+            set "!_KEY!=!_VAL!"
         )
     )
+    set "_KEY="
+    set "_VAL="
 )
+
+set "BACKEND=%BACKEND: =%"
 
 if /i "%BACKEND%"=="auto" (
     if exist "runtime\windows\llama-server.exe" (
@@ -47,8 +58,18 @@ if /i "%BACKEND%"=="auto" (
     ) else (
         set "RESOLVED_BACKEND=llama-cli"
     )
+) else if /i "%BACKEND%"=="llama-server" (
+    set "RESOLVED_BACKEND=llama-server"
+) else if /i "%BACKEND%"=="llama-cli" (
+    set "RESOLVED_BACKEND=llama-cli"
 ) else (
-    set "RESOLVED_BACKEND=%BACKEND%"
+    echo [ERROR] Unknown BACKEND value "%BACKEND%" in .env - expected auto, llama-server, or llama-cli.
+    echo         Fix the BACKEND= line in .env ^(check for trailing spaces or an
+    echo         inline comment on that line - only "auto", "llama-server", or
+    echo         "llama-cli" are valid, nothing else on the line^).
+    echo.
+    pause
+    exit /b 1
 )
 
 echo.
@@ -71,10 +92,11 @@ if not exist "%MODEL_PATH%" (
     exit /b 1
 )
 
-if /i "%RESOLVED_BACKEND%"=="llama-server" goto :run_llama_server
-if /i "%RESOLVED_BACKEND%"=="llama-cli" goto :run_llama_cli
+if /i "%RESOLVED_BACKEND%"=="llama-server" goto run_llama_server
+if /i "%RESOLVED_BACKEND%"=="llama-cli" goto run_llama_cli
 
-echo [ERROR] Unknown BACKEND value "%BACKEND%" - expected auto, llama-server, or llama-cli.
+echo [ERROR] Internal error resolving backend "%RESOLVED_BACKEND%".
+echo         This should not happen - please report this as a bug.
 echo.
 pause
 exit /b 1
@@ -131,6 +153,7 @@ pause
 exit /b 0
 
 :run_llama_cli
+
 where %LLAMA_EXE% >nul 2>nul
 if errorlevel 1 (
     if exist "%LLAMA_EXE%" (
