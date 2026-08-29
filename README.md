@@ -37,9 +37,14 @@ The model and the llama.cpp binary are excluded deliberately - see
 
 1. Copy `.env.example` to `.env` and set `MODEL_PATH` / `LLM_MODEL_NAME` (and any GPU/backend settings) for your setup.
 2. Get a server backend: place a `llama-server.exe` build in `runtime\windows\`, **or** point `LLAMA_EXE` in `.env` at an already-installed `llama.exe` (defaults to resolving `llama.exe` on PATH). `BACKEND=auto` in `.env` picks whichever is available. Also place your `.gguf` model at the path from `MODEL_PATH`.
-3. Run `Start-UI.bat` - it starts the model server, the agent, and opens the web UI in your browser automatically.
-   - Prefer bare API access or your own client? Run `Start-Model.bat`, then `Start-Agent.bat` in a second window instead, and open `http://127.0.0.1:8787/docs` or `http://127.0.0.1:8787/redoc`.
-   - Prefer a terminal? `python cli.py --list-projects` and friends talk to the same running agent (see "Using the UI" in `RUN.md`).
+3. Run **`Start-All-with-UI.bat`**. That's it - it starts the model server, starts the agent, waits for both to be ready, and opens the web UI in your browser automatically.
+
+`Start-All-with-UI.bat` is the only script you need for normal use; it does not
+call or depend on any other script. `Start-Model.bat` / `Start-Agent.bat`
+still exist for advanced manual use (e.g. running the agent without the
+UI, or starting each piece in its own separately-timed window) but
+running them is optional, not a prerequisite - see "Advanced: manual
+start" in `RUN.md` if you want that instead.
 
 Full setup, configuration reference, GPU tuning, API examples, UI/CLI
 usage, and troubleshooting live in **[RUN.md](RUN.md)** - read that
@@ -72,9 +77,9 @@ Portable USB LLM Agent/
 │   ├── download_model.py     # guided model download (no blind auto-fetch)
 │   └── verify_environment.py # pre-flight checks
 ├── .env.example         # copy to .env and edit
-├── Start-Model.bat
-├── Start-Agent.bat
-├── Start-UI.bat                # starts model + agent + opens the web UI
+├── Start-All-with-UI.bat                # the only script you need - starts model + agent + opens the UI
+├── Start-Model.bat              # advanced/manual: starts only the model server
+├── Start-Agent.bat              # advanced/manual: starts only the agent (requires Start-Model.bat already running)
 ├── Stop-All.bat
 ├── SECURITY.md
 ├── RUN.md                      # detailed setup, tuning, API, UI/CLI usage, troubleshooting
