@@ -51,8 +51,8 @@ export function readFile(relativePath) {
   return getJson(`/file?relative_path=${encodeURIComponent(relativePath)}`);
 }
 
-export function artifactDownloadUrl(filename) {
-  return apiUrl(`/artifacts/${encodeURIComponent(filename)}`);
+export function artifactDownloadUrl(relativePath) {
+  return apiUrl(`/workspace/download?relative_path=${encodeURIComponent(relativePath)}`);
 }
 
 export function explorerDownloadUrl(relativePath) {

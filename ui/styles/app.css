@@ -449,6 +449,9 @@
   justify-content: center;
   padding: 1rem;
 }
+.modal-overlay.hidden {
+  display: none;
+}
 .modal-card {
   background: var(--color-abyss);
   border: 1px solid var(--color-line);

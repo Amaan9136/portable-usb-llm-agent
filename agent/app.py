@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from pathlib import PurePosixPath as PathLib
 from typing import Any, Iterator
@@ -28,7 +29,7 @@ from openai import APIConnectionError, OpenAI
 from pydantic import ValidationError
 from config import ( AGENT_PORT, ARTIFACTS, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LOGS, MAX_AGENT_TURNS, MODEL_BACKEND, MODEL_PORT, OLLAMA_HOST, OLLAMA_MODEL_NAME, TESTING_PHASE_DEFAULT, TOOL_MODE, VERBOSE_STREAM_DEFAULT, WORKSPACE, )
 from schemas import ( AgentRequest, AgentResponse, FallbackAction, FileWriteRequest, ImportProjectRequest, SelectModelRequest, ToolCallTrace, )
-from tools import ( PathSecurityError, create_zip, file_tree, import_project, list_files, list_projects, read_file, run_command, safe_artifact_path, write_file, )
+from tools import ( PathSecurityError, create_zip, file_tree, import_project, list_files, list_projects, read_file, run_command, safe_artifact_path, safe_workspace_path, write_file, )
 import ollama_client
 # --- Logging -----------------------------------------------------------
 # Structured, but deliberately excludes task text, file content, command
@@ -231,12 +232,17 @@ def _run_native(request: AgentRequest) -> AgentResponse:
         if not message.tool_calls:
             rescued = _extract_fallback_action(message.content or "")
             if rescued is None:
+                final_text = message.content or ""
+                warning_msg = _verify_final_answer(final_text, changed_files, artifact_filename)
+                if warning_msg:
+                    warnings.append(warning_msg)
+                    final_text = _truthful_final_text(final_text, changed_files)
                 return AgentResponse(
                     ok=True,
                     changed_files=changed_files,
                     command_results=command_results,
                     warnings=warnings,
-                    final_answer=message.content or "",
+                    final_answer=final_text,
                     artifact_filename=artifact_filename,
                     trace=trace,
                 )
@@ -245,12 +251,17 @@ def _run_native(request: AgentRequest) -> AgentResponse:
                 "native tool call; recovered it automatically."
             )
             if rescued.action == "final_answer":
+                final_text = rescued.answer or ""
+                warning_msg = _verify_final_answer(final_text, changed_files, artifact_filename)
+                if warning_msg:
+                    warnings.append(warning_msg)
+                    final_text = _truthful_final_text(final_text, changed_files)
                 return AgentResponse(
                     ok=True,
                     changed_files=changed_files,
                     command_results=command_results,
                     warnings=warnings,
-                    final_answer=rescued.answer or "",
+                    final_answer=final_text,
                     artifact_filename=artifact_filename,
                     trace=trace,
                 )
@@ -317,6 +328,60 @@ _TOOL_TO_ROLE_HINT = {
     "run_command": "tester",
     "create_zip": "packager",
 }
+_PATH_LIKE_RE = re.compile(r"[A-Za-z0-9_.\-/\\]*[A-Za-z0-9_\-]\.[A-Za-z0-9]{1,10}")
+_CLAIM_KEYWORD_RE = re.compile(
+    r"\b(changed|created|wrote|written|writing|added|generated|updated|modified|implemented|built|building)\b",
+    re.IGNORECASE,
+)
+def _verify_final_answer(text: str, changed_files: list[str], artifact_filename: str | None) -> str | None:
+    """Cross-checks a model's final-answer text against what actually
+    happened during the run (changed_files / artifact_filename, which are
+    only ever populated by a genuinely successful write_file / create_zip
+    tool result). Returns a warning message if the text claims specific
+    filenames were changed/created/written but no matching tool call
+    actually succeeded, or None if the claim is backed up (or the text
+    makes no such claim). This exists because the fallback-JSON recovery
+    path (and, sometimes, native models) can produce a narrative final
+    answer that never actually called write_file, per system_prompt.txt's
+    "never claim a file was created... unless a tool result confirms it"
+    rule - the harness needs to enforce that itself rather than trust it."""
+    if not text or not _CLAIM_KEYWORD_RE.search(text):
+        return None
+    claimed_paths = {
+        p.strip().lstrip("-*• ").rstrip(".,;:")
+        for p in _PATH_LIKE_RE.findall(text)
+    }
+    changed_set = set(changed_files)
+    unconfirmed = [
+        p for p in claimed_paths
+        if p not in changed_set and not any(p.endswith(c) or c.endswith(p) for c in changed_set)
+    ]
+    if not unconfirmed:
+        return None
+    if not changed_files:
+        return (
+            "The final answer describes writing "
+            f"{', '.join(sorted(unconfirmed))}, but no write_file call actually "
+            "succeeded this run - the model described the implementation in "
+            "prose but never called the tool. Nothing was written to disk."
+        )
+    return (
+        "The final answer references file(s) not confirmed by any successful "
+        f"write_file call this run: {', '.join(sorted(unconfirmed))}. Only these "
+        f"were actually written: {', '.join(changed_files)}."
+    )
+def _truthful_final_text(text: str, changed_files: list[str]) -> str:
+    if changed_files:
+        return (
+            "No files beyond the following were actually written this run "
+            f"(the rest of the answer below was not confirmed by a tool result): "
+            f"{', '.join(changed_files)}.\n\n" + text
+        )
+    return (
+        "No files were actually written this run - the model described the "
+        "implementation in prose but never called write_file. Nothing was "
+        "saved to disk.\n\n" + text
+    )
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 def _stream_native(request: AgentRequest) -> Iterator[str]:
@@ -427,6 +492,10 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
         if not tool_call_chunks:
             rescued = _extract_fallback_action(full_content)
             if rescued is None:
+                warning_msg = _verify_final_answer(full_content, changed_files, artifact_filename)
+                if warning_msg:
+                    yield _sse("warning", {"message": warning_msg})
+                    full_content = _truthful_final_text(full_content, changed_files)
                 yield _sse(
                     "final_answer",
                     {
@@ -447,11 +516,16 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
                 },
             )
             if rescued.action == "final_answer":
+                rescued_text = rescued.answer or ""
+                warning_msg = _verify_final_answer(rescued_text, changed_files, artifact_filename)
+                if warning_msg:
+                    yield _sse("warning", {"message": warning_msg})
+                    rescued_text = _truthful_final_text(rescued_text, changed_files)
                 yield _sse(
                     "final_answer",
                     {
                         "ok": True,
-                        "text": rescued.answer or "",
+                        "text": rescued_text,
                         "changed_files": changed_files,
                         "artifact_filename": artifact_filename,
                     },
@@ -573,12 +647,17 @@ def _run_fallback(request: AgentRequest) -> AgentResponse:
                 f"turn {turn}: model wrapped its action JSON in extra text/fencing; recovered it automatically."
             )
         if action.action == "final_answer":
+            final_text = action.answer or ""
+            warning_msg = _verify_final_answer(final_text, changed_files, artifact_filename)
+            if warning_msg:
+                warnings.append(warning_msg)
+                final_text = _truthful_final_text(final_text, changed_files)
             return AgentResponse(
                 ok=True,
                 changed_files=changed_files,
                 command_results=command_results,
                 warnings=warnings,
-                final_answer=action.answer or "",
+                final_answer=final_text,
                 artifact_filename=artifact_filename,
                 trace=trace,
             )
@@ -688,16 +767,21 @@ def download_explorer_zip(relative_path: str = ".") -> FileResponse:
     """Zips any workspace file or folder (defaults to the whole workspace
     root) on demand and serves it - what the UI's explorer-panel download
     button and the CLI's --download-zip flag both call. Reuses the same
-    containment-checked create_zip tool as the agent itself."""
+    containment-checked create_zip tool as the agent itself. create_zip
+    writes its output inside workspace/<project>/, so the result is
+    resolved with safe_workspace_path (not safe_artifact_path, which is
+    scoped to the separate top-level artifacts/ directory)."""
     import uuid
     artifact_name = f"explorer-{uuid.uuid4().hex[:8]}.zip"
     result = create_zip(relative_path, artifact_name)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Zip failed."))
     try:
-        path = safe_artifact_path(result["artifact"])
-    except (PathSecurityError, FileNotFoundError) as exc:
+        path = safe_workspace_path(result["artifact"])
+    except PathSecurityError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if not path.is_file():
+        raise HTTPException(status_code=500, detail="Zip was created but could not be found afterward.")
     download_name = "workspace.zip" if relative_path in (".", "") else f"{PathLib(relative_path).name}.zip"
     return FileResponse(path, media_type="application/zip", filename=download_name)
 @app.get("/artifacts/{filename}")
@@ -708,6 +792,20 @@ def download_artifact(filename: str) -> FileResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(path, media_type="application/zip", filename=path.name)
+@app.get("/workspace/download")
+def download_workspace_artifact(relative_path: str) -> FileResponse:
+    """Serves an already-built ZIP that create_zip wrote inside
+    workspace/<project>/ (see create_zip's own docstring/comments in
+    tools.py). Distinct from /explorer/download, which always zips a
+    path fresh on demand - this just streams an existing file, since
+    the agent's own create_zip output no longer lives in artifacts/."""
+    try:
+        path = safe_workspace_path(relative_path)
+    except PathSecurityError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not path.is_file() or path.suffix.lower() != ".zip":
+        raise HTTPException(status_code=404, detail="Zip artifact not found.")
     return FileResponse(path, media_type="application/zip", filename=path.name)
 @app.post("/agent/stream")
 def run_agent_stream(request: AgentRequest) -> StreamingResponse:
@@ -737,6 +835,8 @@ def run_agent_stream(request: AgentRequest) -> StreamingResponse:
                     "tool_call_end",
                     {"turn": 0, "role": role, "tool": trace.tool, "arguments": trace.arguments, "result": trace.result},
                 )
+            for warning_msg in response.warnings:
+                yield _sse("warning", {"message": warning_msg})
             yield _sse(
                 "final_answer",
                 {

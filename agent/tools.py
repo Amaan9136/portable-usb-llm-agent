@@ -221,13 +221,13 @@ def create_zip(source_relative_path: str, artifact_name: str) -> dict:
     if not source.exists():
         return {"ok": False, "error": "Source path does not exist."}
     # artifact_name is sanitized independently of workspace path rules:
-    # it must resolve to a plain filename inside ARTIFACTS, never a
-    # nested path. Use PureWindowsPath (not the platform-default Path)
-    # so this is correct even when the agent runs on a non-Windows host
-    # (e.g. this test suite on Linux) - PureWindowsPath understands
-    # backslash separators and drive letters the way the actual deployed
-    # Windows target will, whereas a POSIX PurePath would treat
-    # "..\\..\\evil" as a single opaque filename and let it through.
+    # it must resolve to a plain filename, never a nested path. Use
+    # PureWindowsPath (not the platform-default Path) so this is correct
+    # even when the agent runs on a non-Windows host (e.g. this test
+    # suite on Linux) - PureWindowsPath understands backslash separators
+    # and drive letters the way the actual deployed Windows target will,
+    # whereas a POSIX PurePath would treat "..\\..\\evil" as a single
+    # opaque filename and let it through.
     win_name = PureWindowsPath(artifact_name)
     if win_name.drive or win_name.root:
         return {"ok": False, "error": "Invalid artifact name: absolute or rooted names are not allowed."}
@@ -236,11 +236,18 @@ def create_zip(source_relative_path: str, artifact_name: str) -> dict:
         return {"ok": False, "error": "Invalid artifact name: must be a plain filename, no path separators."}
     if not safe_stem.lower().endswith(".zip"):
         safe_stem += ".zip"
-    output = (ARTIFACTS / safe_stem).resolve()
+    # The ZIP lands inside the same project folder it was built from
+    # (workspace/<project>/), not the separate top-level artifacts/
+    # directory - the project is the first path segment of the
+    # already-containment-checked source path. Routed back through
+    # safe_workspace_path so the output is subject to the exact same
+    # traversal/absolute/reserved-name checks as any other workspace
+    # write, not a bespoke rule.
+    project_root_name = source.relative_to(WORKSPACE).parts[0]
     try:
-        output.relative_to(ARTIFACTS)
-    except ValueError:
-        return {"ok": False, "error": "Invalid artifact name."}
+        output = safe_workspace_path(f"{project_root_name}/{safe_stem}")
+    except PathSecurityError as exc:
+        return {"ok": False, "error": str(exc)}
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         if source.is_file():
             archive.write(source, source.name)
@@ -248,7 +255,7 @@ def create_zip(source_relative_path: str, artifact_name: str) -> dict:
             for file in source.rglob("*"):
                 if file.is_file() and ".git" not in file.parts:
                     archive.write(file, file.relative_to(source.parent))
-    return {"ok": True, "artifact": output.name}
+    return {"ok": True, "artifact": str(output.relative_to(WORKSPACE))}
 def delete_path(*_args, **_kwargs) -> dict:
     """Deletion is deliberately and permanently disabled. See SECURITY.md."""
     return {
