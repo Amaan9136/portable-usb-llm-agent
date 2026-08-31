@@ -16,6 +16,11 @@ class ImportProjectRequest(BaseModel):
     project_name: Optional[str] = Field(default=None, max_length=80)
 
 
+class SelectModelRequest(BaseModel):
+    backend: Literal["llama-cpp", "ollama"]
+    model_name: Optional[str] = Field(default=None, max_length=200)
+
+
 class FileWriteRequest(BaseModel):
     content: str
     allow_overwrite: bool = True
@@ -42,6 +47,23 @@ class AgentRequest(BaseModel):
     allow_overwrite: bool = Field(
         default=False,
         description="Must be explicitly true to let write_file overwrite an existing file.",
+    )
+    verbose_stream: Optional[bool] = Field(
+        default=None,
+        description="If set, overrides VERBOSE_STREAM_DEFAULT for this request only.",
+    )
+    testing_phase: Optional[bool] = Field(
+        default=None,
+        description="If set, overrides TESTING_PHASE_DEFAULT for this request only.",
+    )
+    backend: Optional[Literal["llama-cpp", "ollama"]] = Field(
+        default=None,
+        description="If set, overrides MODEL_BACKEND for this request only.",
+    )
+    model_name: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="If set with backend='ollama', overrides OLLAMA_MODEL_NAME for this request only.",
     )
 
 

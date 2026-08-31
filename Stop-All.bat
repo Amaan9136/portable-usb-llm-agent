@@ -29,6 +29,16 @@ rem Instead, ask the user to close that window directly.
 echo   The agent (uvicorn) window must be closed manually with Ctrl+C or
 echo   by closing its console window - it runs as a generic python.exe
 echo   process and is not safe to force-kill by name.
+rem If MODEL_BACKEND=ollama was used, Ollama itself is a persistent
+rem background service shared with the rest of the system (and may be
+rem used by other apps) - this script never stops it. Use `ollama stop
+rem <model>` to unload a specific model, or manage the Ollama service
+rem through its own tray icon / service controls if you want it fully
+rem stopped.
+echo   Ollama (if you used the ollama backend) is left running - it is a
+echo   shared background service, not something this launcher started,
+echo   so it is never stopped here. Use "ollama stop ^<model^>" to unload
+echo   a model, or the Ollama tray icon to stop the service itself.
 echo.
 echo Done.
 pause

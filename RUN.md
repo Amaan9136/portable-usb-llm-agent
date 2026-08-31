@@ -140,14 +140,53 @@ manually and opened `http://127.0.0.1:8787/` yourself), you can:
   into `workspace/<name>/` (the original folder is never modified),
   keeping the agent's sandboxing guarantee intact while still letting
   you work with any project on your machine.
-- Browse that project's files in the left-hand explorer.
-- Chat with the agent in the center panel. Tool calls stream in live,
-  tagged by pipeline role (planner / implementer / reviewer / tester /
-  packager), and the right-hand viewer updates in real time whenever a
-  file is written.
+- Browse that project's files in the left-hand explorer. Hover a file
+  to reveal a download icon that zips and downloads just that file; the
+  zip icon next to the project dropdown downloads the whole project.
+- Chat with the agent in the center panel. A short conversational
+  message just gets a normal streamed reply - the agent only enters its
+  planner/implementer/reviewer/tester/packager pipeline when the task
+  actually needs to touch files or run commands. When it does, every
+  action streams into the chat live as a collapsible step (file
+  written, command run with its output, files listed, zip packaged) -
+  click a step to expand its full detail. The right-hand viewer also
+  updates in real time whenever a file is written.
 - Toggle "Allow commands", "Allow overwrite", and "Package ZIP" the
   same way you would with the `allow_commands` / `allow_overwrite` /
   `create_zip` fields in a raw `/agent` request.
+- Open **Settings** (gear icon) to:
+  - Point the UI at a different agent server URL.
+  - Pick which model backend/model is active - the built-in portable
+    GGUF model, or (if you've opted into Ollama - see below) any model
+    `ollama list` shows, local or cloud, refreshed live from the
+    server.
+  - Toggle **verbose event streaming** (show every tool call, command,
+    and reasoning step live, vs. just the final answer) and **testing
+    phase** (whether the tester role's `run_command` calls happen by
+    default) - each toggle has a caption explaining what it does.
+
+### Optional: using Ollama instead of the bundled llama.cpp model
+
+The portable llama.cpp flow above is always the default and needs
+nothing extra. If you'd rather use a model already installed via
+[Ollama](https://ollama.com) - including Ollama's cloud-hosted
+`*-cloud` models - it's an opt-in switch, not a replacement:
+
+1. Install Ollama normally and make sure `ollama list` works in a
+   terminal.
+2. Either set `MODEL_BACKEND=ollama` and `OLLAMA_MODEL_NAME=<name>` in
+   `.env` before launching, **or** leave `.env` alone and pick the
+   model later from the Settings modal's model dropdown (or
+   `cli.py --model <name> --backend ollama`) - no restart needed.
+3. `Start-Model.bat` / `Start-All.bat` detect `BACKEND=ollama` and,
+   instead of launching a new model-server process, just confirm the
+   Ollama service is reachable (`ollama list`) and print the installed
+   models, since Ollama runs its own persistent background service.
+
+Switching backend/model through the UI or CLI takes effect immediately
+for new runs - it calls `/models/select` on the running agent, no
+restart required. `Stop-All.bat` never stops Ollama itself, since it's
+shared background infrastructure this launcher didn't start.
 
 ### Command-line client
 
@@ -162,7 +201,23 @@ python cli.py --task "add input validation" --project my-app
 python cli.py --task "run the test suite" --project my-app --allow-commands
 python cli.py --tree --project my-app
 python cli.py --read my-app/src/main.py
+python cli.py --list-models
+python cli.py --model "llama3.2:latest" --backend ollama
+python cli.py --task "add tests" --project my-app --backend ollama --model "gpt-oss:20b-cloud"
+python cli.py --download-zip --project my-app
+python cli.py --task "quick fix" --project my-app --no-verbose
+python cli.py --task "quick fix" --project my-app --no-testing-phase
 ```
+
+`--list-models` shows both the portable llama.cpp model and, if
+reachable, every Ollama model (labeled `local` or `cloud`). `--model`
+with `--backend` switches the active server-wide selection the same
+way the UI's Settings modal does. `--download-zip` (with `--path` to
+scope it to a subfolder, and `--out` for the output filename) zips and
+downloads via the same endpoint the UI's download buttons use.
+`--no-verbose` hides the live tool-call/command chatter and streams
+only tokens plus the final answer; `--no-testing-phase` skips the
+tester role for that one run.
 
 On macOS/Linux, or if you already have the model server running and
 just want the agent + UI, `start_ui.py` is a cross-platform equivalent
@@ -211,10 +266,16 @@ values.
 | `LLAMA_EXE` | Start-All.bat, scripts\verify_environment.py | Path or bare name of the `llama.exe`-style CLI build, used for the `llama-cli` backend. Defaults to `llama.exe` resolved via PATH. |
 | `EXTRA_ARGS` | Start-All.bat | Extra flags appended verbatim to whichever backend's command line (backend-specific, e.g. a Vulkan device selector). |
 | `AGENT_PORT` | Start-All.bat, agent | Port the FastAPI agent binds to on `127.0.0.1`. |
-| `LLM_MODEL_NAME` | agent | Model name string sent in `/v1/chat/completions` requests; must match what your chosen backend reports for your loaded model. |
+| `LLM_MODEL_NAME` | agent | Model name string sent in `/v1/chat/completions` requests when using the llama-cpp backend; must match what your chosen backend reports for your loaded model. |
 | `TOOL_MODE` | agent | `native` (OpenAI-style tool calls) or `fallback` (single JSON action per turn - more reliable on small/quantized models). |
 | `MAX_AGENT_TURNS` | agent | Max turns in the agent's sequential planner→implementer→reviewer→tester→packager loop. |
 | `COMMAND_TIMEOUT_SECONDS` | agent | Timeout for any single allowlisted shell command the agent runs. |
+| `MODEL_BACKEND` | Start-Model.bat, Start-All.bat, agent | `llama-cpp` (default, the portable flow above) or `ollama` (opt-in). Never changes automatically. |
+| `OLLAMA_HOST` | agent, ollama_client.py | Base URL of the Ollama HTTP API. Default `http://127.0.0.1:11434`. |
+| `OLLAMA_MODEL_NAME` | agent | Which `ollama list` model name to use by default when `MODEL_BACKEND=ollama`. Can be left blank and chosen later via the UI/CLI model switcher. |
+| `OLLAMA_EXE` | Start-Model.bat, Start-All.bat, agent | Bare name or full path of the `ollama` CLI binary, used to verify the service is up and as a fallback if the HTTP API is unreachable. |
+| `TESTING_PHASE_DEFAULT` | agent, UI, CLI | Default state of the "testing phase" toggle (tester role runs `run_command`) before any per-request or UI override. |
+| `VERBOSE_STREAM_DEFAULT` | agent, UI, CLI | Default state of the "verbose event streaming" toggle (every tool call/command streams live) before any per-request or UI override. |
 
 Environment variables set before launching a script take precedence
 over `.env`, which takes precedence over `.env.example`, which takes
@@ -316,6 +377,44 @@ Invoke-RestMethod http://127.0.0.1:8787/artifacts
 Invoke-WebRequest http://127.0.0.1:8787/artifacts/calculator.zip -OutFile calculator.zip
 ```
 
+**List models (portable + optional Ollama, local and cloud):**
+
+curl:
+```
+curl http://127.0.0.1:8787/models
+```
+PowerShell:
+```
+Invoke-RestMethod http://127.0.0.1:8787/models
+```
+
+**Switch the active backend/model** (takes effect immediately, no restart):
+
+curl:
+```
+curl -X POST http://127.0.0.1:8787/models/select ^
+  -H "Content-Type: application/json" ^
+  -d "{\"backend\": \"ollama\", \"model_name\": \"llama3.2:latest\"}"
+```
+PowerShell:
+```
+$body = @{ backend = "ollama"; model_name = "llama3.2:latest" } | ConvertTo-Json
+Invoke-RestMethod -Uri http://127.0.0.1:8787/models/select -Method Post -Body $body -ContentType "application/json"
+```
+
+**Download a project (or a single file within it) as a ZIP** - what the
+UI's download icons and `cli.py --download-zip` both call:
+
+curl:
+```
+curl -o calculator.zip "http://127.0.0.1:8787/explorer/download?relative_path=calculator"
+curl -o main.py.zip "http://127.0.0.1:8787/explorer/download?relative_path=calculator/main.py"
+```
+PowerShell:
+```
+Invoke-WebRequest "http://127.0.0.1:8787/explorer/download?relative_path=calculator" -OutFile calculator.zip
+```
+
 Read `SECURITY.md` before setting `allow_commands: true` routinely.
 
 ## Troubleshooting
@@ -333,7 +432,25 @@ instead. Confirm the binary works standalone with
 `<path>\llama.exe serve --help`.
 
 **"Unknown BACKEND value"**
-`BACKEND` in `.env` must be `auto`, `llama-server`, or `llama-cli`.
+`BACKEND` in `.env` must be `auto`, `llama-server`, `llama-cli`, or
+`ollama`.
+
+**"'ollama' was not found on PATH" / "ollama list failed"**
+Only relevant if you set `MODEL_BACKEND=ollama` or picked an Ollama
+model from the UI/CLI. Install Ollama from
+[ollama.com/download](https://ollama.com/download), confirm `ollama
+list` works in a plain terminal, and make sure the Ollama background
+service is actually running (it normally auto-starts after install;
+restart it or run `ollama serve` manually otherwise). If `ollama` is
+installed somewhere not on PATH, set `OLLAMA_EXE` in `.env` to its full
+path.
+
+**Model dropdown in Settings shows "Ollama unavailable"**
+This just means the agent couldn't reach `OLLAMA_HOST`
+(`http://127.0.0.1:11434` by default) - the portable llama.cpp model is
+unaffected and still selectable. Check the same things as the previous
+entry, or that `OLLAMA_HOST` in `.env` matches where Ollama is actually
+listening if you've customized it.
 
 **"Model file not found at ..."**
 Check that `MODEL_PATH` in `.env` points at the exact file you

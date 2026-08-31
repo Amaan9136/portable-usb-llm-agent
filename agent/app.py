@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import time
+from pathlib import PurePosixPath as PathLib
 from typing import Any, Iterator
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,9 +26,10 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import APIConnectionError, OpenAI
 from pydantic import ValidationError
-from config import ( AGENT_PORT, ARTIFACTS, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LOGS, MAX_AGENT_TURNS, TOOL_MODE, WORKSPACE, )
-from schemas import ( AgentRequest, AgentResponse, FallbackAction, FileWriteRequest, ImportProjectRequest, ToolCallTrace, )
+from config import ( AGENT_PORT, ARTIFACTS, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LOGS, MAX_AGENT_TURNS, MODEL_BACKEND, MODEL_PORT, OLLAMA_HOST, OLLAMA_MODEL_NAME, TESTING_PHASE_DEFAULT, TOOL_MODE, VERBOSE_STREAM_DEFAULT, WORKSPACE, )
+from schemas import ( AgentRequest, AgentResponse, FallbackAction, FileWriteRequest, ImportProjectRequest, SelectModelRequest, ToolCallTrace, )
 from tools import ( PathSecurityError, create_zip, file_tree, import_project, list_files, list_projects, read_file, run_command, safe_artifact_path, write_file, )
+import ollama_client
 # --- Logging -----------------------------------------------------------
 # Structured, but deliberately excludes task text, file content, command
 # output, and anything that could contain secrets. Only metadata: which
@@ -52,9 +54,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
+_DEFAULT_CLIENT = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
+_CLIENT_CACHE: dict[str, OpenAI] = {LLM_BASE_URL: _DEFAULT_CLIENT}
+_ACTIVE_SELECTION = {"backend": MODEL_BACKEND, "model_name": OLLAMA_MODEL_NAME or LLM_MODEL}
 with open(os.path.join(os.path.dirname(__file__), "system_prompt.txt"), encoding="utf-8") as f:
     SYSTEM_PROMPT = f.read()
+
+
+def _resolve_backend(request: AgentRequest) -> tuple[OpenAI, str, str]:
+    """Pick the OpenAI-compatible client, base URL, and model name to use
+    for this request. Precedence: explicit per-request backend/model_name
+    > the server-wide active selection (set via /models/select, the UI
+    switcher, or `cli.py --model`) > MODEL_BACKEND/.env at startup."""
+    backend = request.backend or _ACTIVE_SELECTION["backend"] or MODEL_BACKEND
+    if backend == "ollama":
+        base_url = f"{OLLAMA_HOST.rstrip('/')}/v1"
+        model = request.model_name or _ACTIVE_SELECTION["model_name"] or OLLAMA_MODEL_NAME or LLM_MODEL
+    else:
+        base_url = f"http://127.0.0.1:{MODEL_PORT}/v1"
+        model = LLM_MODEL
+    if base_url not in _CLIENT_CACHE:
+        _CLIENT_CACHE[base_url] = OpenAI(base_url=base_url, api_key=LLM_API_KEY)
+    return _CLIENT_CACHE[base_url], base_url, model
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -176,6 +197,7 @@ def _dispatch_tool(name: str, arguments: dict, request: AgentRequest) -> dict:
         )
     return {"ok": False, "error": f"Unknown tool: {name}"}
 def _run_native(request: AgentRequest) -> AgentResponse:
+    client, base_url, model_name = _resolve_backend(request)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": request.task},
@@ -188,7 +210,7 @@ def _run_native(request: AgentRequest) -> AgentResponse:
     for turn in range(MAX_AGENT_TURNS):
         try:
             completion = client.chat.completions.create(
-                model=LLM_MODEL,
+                model=model_name,
                 messages=messages,
                 tools=TOOLS,
                 tool_choice="auto",
@@ -198,8 +220,8 @@ def _run_native(request: AgentRequest) -> AgentResponse:
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    "Could not reach the local model server at "
-                    f"{LLM_BASE_URL}. Is Start-Model.bat running? ({exc})"
+                    "Could not reach the model server at "
+                    f"{base_url}. Is the model/Ollama server running? ({exc})"
                 ),
             ) from exc
         message = completion.choices[0].message
@@ -297,6 +319,8 @@ _TOOL_TO_ROLE_HINT = {
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 def _stream_native(request: AgentRequest) -> Iterator[str]:
+    client, base_url, model_name = _resolve_backend(request)
+    verbose = request.verbose_stream if request.verbose_stream is not None else VERBOSE_STREAM_DEFAULT
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": request.task},
@@ -304,12 +328,26 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
     changed_files: list[str] = []
     artifact_filename: str | None = None
     seen_role = "planner"
-    yield _sse("start", {"turns_allowed": MAX_AGENT_TURNS, "roles": _ROLE_SEQUENCE})
+    run_started_at = time.monotonic()
+    total_tokens = 0
+    yield _sse(
+        "start",
+        {
+            "turns_allowed": MAX_AGENT_TURNS,
+            "roles": _ROLE_SEQUENCE,
+            "backend": request.backend or MODEL_BACKEND,
+            "model": model_name,
+            "verbose_stream": verbose,
+        },
+    )
     for turn in range(MAX_AGENT_TURNS):
-        yield _sse("turn_start", {"turn": turn})
+        if verbose:
+            yield _sse("turn_start", {"turn": turn})
+        turn_started_at = time.monotonic()
+        turn_tokens = 0
         try:
             stream = client.chat.completions.create(
-                model=LLM_MODEL,
+                model=model_name,
                 messages=messages,
                 tools=TOOLS,
                 tool_choice="auto",
@@ -321,8 +359,8 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
                 "error",
                 {
                     "message": (
-                        f"Could not reach the local model server at {LLM_BASE_URL}. "
-                        f"Is the model server running? ({exc})"
+                        f"Could not reach the model server at {base_url}. "
+                        f"Is the model/Ollama server running? ({exc})"
                     ),
                 },
             )
@@ -339,6 +377,8 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
                     finish_reason = choice.finish_reason
                 if delta and delta.content:
                     content_parts.append(delta.content)
+                    turn_tokens += 1
+                    total_tokens += 1
                     if suppress_tokens is None:
                         stripped = "".join(content_parts).lstrip()
                         if stripped:
@@ -359,6 +399,18 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
         except APIConnectionError as exc:
             yield _sse("error", {"message": f"Lost connection to model server mid-stream: {exc}"})
             return
+        turn_elapsed = max(time.monotonic() - turn_started_at, 1e-6)
+        yield _sse(
+            "perf",
+            {
+                "turn": turn,
+                "tokens": turn_tokens,
+                "elapsed_seconds": round(turn_elapsed, 3),
+                "tokens_per_second": round(turn_tokens / turn_elapsed, 2),
+                "total_tokens": total_tokens,
+                "total_elapsed_seconds": round(time.monotonic() - run_started_at, 3),
+            },
+        )
         full_content = "".join(content_parts)
         assistant_message: dict[str, Any] = {"role": "assistant", "content": full_content or None}
         if tool_call_chunks:
@@ -408,7 +460,8 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
             role = _TOOL_TO_ROLE_HINT.get(name, seen_role)
             seen_role = role
             rescued_arguments = rescued.model_dump(exclude_none=True, exclude={"action"})
-            yield _sse("tool_call_start", {"turn": turn, "role": role, "tool": name, "arguments": rescued_arguments})
+            if verbose:
+                yield _sse("tool_call_start", {"turn": turn, "role": role, "tool": name, "arguments": rescued_arguments})
             try:
                 result = _dispatch_tool(name, rescued_arguments, request)
             except PathSecurityError as exc:
@@ -436,10 +489,11 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
                 arguments = {}
                 result = {"ok": False, "error": "Model produced invalid JSON arguments."}
             else:
-                yield _sse(
-                    "tool_call_start",
-                    {"turn": turn, "role": role, "tool": name, "arguments": arguments},
-                )
+                if verbose:
+                    yield _sse(
+                        "tool_call_start",
+                        {"turn": turn, "role": role, "tool": name, "arguments": arguments},
+                    )
                 try:
                     result = _dispatch_tool(name, arguments, request)
                 except PathSecurityError as exc:
@@ -471,6 +525,7 @@ def _stream_native(request: AgentRequest) -> Iterator[str]:
 def _run_fallback(request: AgentRequest) -> AgentResponse:
     """Constrained single-JSON-action-per-turn loop for models/templates
     that don't reliably support native tool calling."""
+    client, base_url, model_name = _resolve_backend(request)
     fallback_prompt = (
         SYSTEM_PROMPT
         + "\n\nNOTE: Native tool calling is NOT available in this session. "
@@ -488,14 +543,14 @@ def _run_fallback(request: AgentRequest) -> AgentResponse:
     for turn in range(MAX_AGENT_TURNS):
         try:
             completion = client.chat.completions.create(
-                model=LLM_MODEL,
+                model=model_name,
                 messages=messages,
                 temperature=0.2,
             )
         except APIConnectionError as exc:
             raise HTTPException(
                 status_code=503,
-                detail=f"Could not reach the local model server at {LLM_BASE_URL}. ({exc})",
+                detail=f"Could not reach the model server at {base_url}. ({exc})",
             ) from exc
         raw = completion.choices[0].message.content or ""
         messages.append({"role": "assistant", "content": raw})
@@ -559,7 +614,59 @@ def health() -> dict:
         "model_endpoint": LLM_BASE_URL,
         "model": LLM_MODEL,
         "tool_mode": TOOL_MODE,
+        "backend": _ACTIVE_SELECTION["backend"],
+        "active_model": _ACTIVE_SELECTION["model_name"],
+        "ollama_host": OLLAMA_HOST,
+        "testing_phase_default": TESTING_PHASE_DEFAULT,
+        "verbose_stream_default": VERBOSE_STREAM_DEFAULT,
     }
+@app.get("/models")
+def get_models() -> dict:
+    """Lists selectable models from both backends: the fixed local GGUF
+    model (llama.cpp), plus every model Ollama reports installed - local
+    and cloud alike - if Ollama is reachable. The cloud/local flag lets
+    the UI/CLI label each entry without any extra round trip."""
+    llama_cpp_models = [{"name": LLM_MODEL, "backend": "llama-cpp", "cloud": False}]
+    ollama_result = ollama_client.list_models()
+    ollama_models = [
+        {"name": m["name"], "backend": "ollama", "cloud": m["cloud"], "id": m.get("id"), "size_bytes": m.get("size_bytes")}
+        for m in ollama_result.get("models", [])
+    ]
+    return {
+        "ok": True,
+        "llama_cpp": llama_cpp_models,
+        "ollama": {
+            "available": ollama_result.get("ok", False),
+            "source": ollama_result.get("source"),
+            "error": ollama_result.get("error"),
+            "models": ollama_models,
+        },
+        "active": _ACTIVE_SELECTION,
+    }
+@app.post("/models/select")
+def select_model(request: SelectModelRequest) -> dict:
+    """Switches the server-wide default backend/model without a restart -
+    what both the UI's model switcher and `cli.py --model` call. A
+    per-request backend/model_name on /agent or /agent/stream still
+    overrides this for that single call."""
+    if request.backend == "ollama":
+        if not request.model_name:
+            raise HTTPException(status_code=400, detail="model_name is required when backend='ollama'.")
+        available = ollama_client.list_models()
+        if available.get("ok") and available.get("models"):
+            names = {m["name"] for m in available["models"]}
+            if request.model_name not in names:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"'{request.model_name}' is not in `ollama list`. Available: {sorted(names)}",
+                )
+        _ACTIVE_SELECTION["backend"] = "ollama"
+        _ACTIVE_SELECTION["model_name"] = request.model_name
+    else:
+        _ACTIVE_SELECTION["backend"] = "llama-cpp"
+        _ACTIVE_SELECTION["model_name"] = LLM_MODEL
+    logger.info("model selection changed: backend=%s model=%s", _ACTIVE_SELECTION["backend"], _ACTIVE_SELECTION["model_name"])
+    return {"ok": True, "active": _ACTIVE_SELECTION}
 @app.post("/agent", response_model=AgentResponse)
 def run_agent(request: AgentRequest) -> AgentResponse:
     logger.info(
@@ -575,6 +682,23 @@ def run_agent(request: AgentRequest) -> AgentResponse:
 def list_artifacts() -> dict:
     files = sorted(p.name for p in ARTIFACTS.glob("*.zip") if p.is_file())
     return {"ok": True, "artifacts": files}
+@app.get("/explorer/download")
+def download_explorer_zip(relative_path: str = ".") -> FileResponse:
+    """Zips any workspace file or folder (defaults to the whole workspace
+    root) on demand and serves it - what the UI's explorer-panel download
+    button and the CLI's --download-zip flag both call. Reuses the same
+    containment-checked create_zip tool as the agent itself."""
+    import uuid
+    artifact_name = f"explorer-{uuid.uuid4().hex[:8]}.zip"
+    result = create_zip(relative_path, artifact_name)
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Zip failed."))
+    try:
+        path = safe_artifact_path(result["artifact"])
+    except (PathSecurityError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    download_name = "workspace.zip" if relative_path in (".", "") else f"{PathLib(relative_path).name}.zip"
+    return FileResponse(path, media_type="application/zip", filename=download_name)
 @app.get("/artifacts/{filename}")
 def download_artifact(filename: str) -> FileResponse:
     try:
@@ -594,7 +718,17 @@ def run_agent_stream(request: AgentRequest) -> StreamingResponse:
     )
     if TOOL_MODE == "fallback":
         def _fallback_wrapper() -> Iterator[str]:
-            yield _sse("start", {"turns_allowed": MAX_AGENT_TURNS, "roles": _ROLE_SEQUENCE})
+            _, _, model_name = _resolve_backend(request)
+            yield _sse(
+                "start",
+                {
+                    "turns_allowed": MAX_AGENT_TURNS,
+                    "roles": _ROLE_SEQUENCE,
+                    "backend": request.backend or _ACTIVE_SELECTION["backend"],
+                    "model": model_name,
+                    "verbose_stream": request.verbose_stream if request.verbose_stream is not None else VERBOSE_STREAM_DEFAULT,
+                },
+            )
             response = _run_fallback(request)
             for trace in response.trace:
                 role = _TOOL_TO_ROLE_HINT.get(trace.tool, "planner")

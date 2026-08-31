@@ -7,7 +7,7 @@ rem
 rem Starts a local llama.cpp server bound to 127.0.0.1 ONLY. Never edit
 rem this to bind to 0.0.0.0 or a LAN-visible address - see SECURITY.md.
 rem
-rem Supports two backend styles:
+rem Supports three backend styles:
 rem   llama-server - the standalone runtime\windows\llama-server.exe
 rem                  binary (flags: -m -c -ngl -t --host --port)
 rem   llama-cli    - a "llama.exe serve" style build resolved via
@@ -15,8 +15,18 @@ rem                  LLAMA_EXE, either on PATH or a full path (flags:
 rem                  -m -ngl -t; no -c/--host/--port in the same form,
 rem                  so those are only passed through EXTRA_ARGS if your
 rem                  build supports them)
+rem   ollama       - OPTIONAL, opt-in only. Does not start a new process;
+rem                  it just confirms `ollama` is on PATH and the Ollama
+rem                  background service is reachable, since Ollama runs
+rem                  its own persistent service rather than a script-
+rem                  launched process. Set OLLAMA_MODEL_NAME in .env to
+rem                  the model shown by `ollama list` you want to use, or
+rem                  pick it later from the UI/CLI model switcher.
 rem BACKEND in .env picks one, or "auto" (default) to prefer
 rem llama-server.exe when present and fall back to LLAMA_EXE otherwise.
+rem BACKEND=ollama is never chosen by "auto" - it must be set explicitly,
+rem so the plain portable USB flow above is completely unaffected unless
+rem you opt in.
 rem
 rem Reads overrides from .env (KEY=VALUE, one per line, # comments
 rem allowed). Falls back to the defaults below if .env is absent or a
@@ -30,6 +40,9 @@ set "CPU_THREADS=6"
 set "MODEL_PORT=8080"
 set "BACKEND=auto"
 set "LLAMA_EXE=llama.exe"
+set "OLLAMA_HOST=http://127.0.0.1:11434"
+set "OLLAMA_MODEL_NAME="
+set "OLLAMA_EXE=ollama"
 if exist ".env" (
     for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
         if not "%%A"=="" if not "%%B"=="" (
@@ -57,11 +70,13 @@ if /i "%BACKEND%"=="auto" (
     set "RESOLVED_BACKEND=llama-server"
 ) else if /i "%BACKEND%"=="llama-cli" (
     set "RESOLVED_BACKEND=llama-cli"
+) else if /i "%BACKEND%"=="ollama" (
+    set "RESOLVED_BACKEND=ollama"
 ) else (
-    echo [ERROR] Unknown BACKEND value "%BACKEND%" in .env - expected auto, llama-server, or llama-cli.
+    echo [ERROR] Unknown BACKEND value "%BACKEND%" in .env - expected auto, llama-server, llama-cli, or ollama.
     echo         Fix the BACKEND= line in .env ^(check for trailing spaces or an
-    echo         inline comment on that line - only "auto", "llama-server", or
-    echo         "llama-cli" are valid, nothing else on the line^).
+    echo         inline comment on that line - only "auto", "llama-server",
+    echo         "llama-cli", or "ollama" are valid, nothing else on the line^).
     echo.
     pause
     exit /b 1
@@ -69,11 +84,18 @@ if /i "%BACKEND%"=="auto" (
 echo.
 echo Portable USB LLM Agent - starting local model server
 echo   Backend:    %RESOLVED_BACKEND% (BACKEND=%BACKEND%)
+if /i "%RESOLVED_BACKEND%"=="ollama" goto show_ollama_banner
 echo   Model:      %MODEL_PATH%
 echo   GPU layers: %GPU_LAYERS%
 echo   CPU threads:%CPU_THREADS%
 echo   Bind:       127.0.0.1:%MODEL_PORT%  (loopback only)
+goto after_banner
+:show_ollama_banner
+echo   Ollama host: %OLLAMA_HOST%
+echo   Model:       %OLLAMA_MODEL_NAME% (blank = choose later in UI/CLI)
+:after_banner
 echo.
+if /i "%RESOLVED_BACKEND%"=="ollama" goto run_ollama
 if not exist "%MODEL_PATH%" (
     echo [ERROR] Model file not found at: %MODEL_PATH%
     echo         Download it separately - see RUN.md, section
@@ -91,6 +113,39 @@ echo         This should not happen - please report this as a bug.
 echo.
 pause
 exit /b 1
+:run_ollama
+where %OLLAMA_EXE% >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] "%OLLAMA_EXE%" was not found on PATH.
+    echo         Install Ollama from https://ollama.com/download, or set
+    echo         OLLAMA_EXE in .env to its full path.
+    echo.
+    pause
+    exit /b 1
+)
+echo Checking Ollama is reachable at %OLLAMA_HOST% ...
+%OLLAMA_EXE% list >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] "%OLLAMA_EXE% list" failed - is the Ollama background
+    echo         service running? On Windows it normally starts
+    echo         automatically after installation; try restarting it, or
+    echo         run "ollama serve" manually in another window and retry.
+    echo.
+    pause
+    exit /b 1
+)
+echo Ollama is reachable. Installed models ^(local and cloud^):
+echo.
+%OLLAMA_EXE% list
+echo.
+echo Ollama runs its own persistent background service, so there is
+echo nothing further for this script to launch - it just verified the
+echo service is up. Set MODEL_BACKEND=ollama and OLLAMA_MODEL_NAME=^<name
+echo from the list above^> in .env, or pick the model later from the
+echo UI/CLI model switcher, then run Start-Agent.bat or Start-All.bat.
+echo.
+pause
+exit /b 0
 :run_llama_server
 if not exist "runtime\windows\llama-server.exe" (
     echo [ERROR] runtime\windows\llama-server.exe was not found.

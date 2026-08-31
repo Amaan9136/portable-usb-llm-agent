@@ -20,6 +20,9 @@ set "CPU_THREADS=6"
 set "MODEL_PORT=8080"
 set "BACKEND=auto"
 set "LLAMA_EXE=llama.exe"
+set "OLLAMA_HOST=http://127.0.0.1:11434"
+set "OLLAMA_MODEL_NAME="
+set "OLLAMA_EXE=ollama"
 set "AGENT_PORT=8787"
 if not exist ".env" goto :after_env
 for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do call :apply_env_line "%%A" "%%B"
@@ -64,14 +67,19 @@ if /i "%BACKEND%"=="llama-cli" (
     set "RESOLVED_BACKEND=llama-cli"
     goto :backend_resolved
 )
-echo [ERROR] Unknown BACKEND value "%BACKEND%" in .env - expected auto, llama-server, or llama-cli.
+if /i "%BACKEND%"=="ollama" (
+    set "RESOLVED_BACKEND=ollama"
+    goto :backend_resolved
+)
+echo [ERROR] Unknown BACKEND value "%BACKEND%" in .env - expected auto, llama-server, llama-cli, or ollama.
 echo         Fix the BACKEND= line in .env - check for trailing spaces or an
-echo         inline comment on that line - only auto, llama-server, or
-echo         llama-cli are valid, nothing else on the line.
+echo         inline comment on that line - only auto, llama-server,
+echo         llama-cli, or ollama are valid, nothing else on the line.
 echo.
 pause
 exit /b 1
 :backend_resolved
+if /i "%RESOLVED_BACKEND%"=="ollama" goto :launch_ollama
 if not exist "%MODEL_PATH%" (
     echo [ERROR] Model file not found at: %MODEL_PATH%
     echo         Download it separately - see RUN.md, section
@@ -121,6 +129,38 @@ echo Launching model server (llama.exe serve) in a new window...
     echo pause
 )
 start "LLM Model Server" cmd /k "%TEMP%\_pua_start_model.bat"
+goto :model_server_launched
+:launch_ollama
+echo Checking Ollama is installed and reachable at %OLLAMA_HOST% ...
+where %OLLAMA_EXE% >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] "%OLLAMA_EXE%" was not found on PATH.
+    echo         Install Ollama from https://ollama.com/download, or set
+    echo         OLLAMA_EXE in .env to its full path.
+    echo.
+    pause
+    exit /b 1
+)
+%OLLAMA_EXE% list >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] "%OLLAMA_EXE% list" failed - is the Ollama background
+    echo         service running? Try restarting it, or run
+    echo         "ollama serve" manually in another window and retry.
+    echo.
+    pause
+    exit /b 1
+)
+echo Ollama is reachable. Installed models ^(local and cloud^):
+echo.
+%OLLAMA_EXE% list
+echo.
+echo Ollama runs its own persistent background service, so no separate
+echo "LLM Model Server" window is needed - continuing straight to the
+echo agent API. Set OLLAMA_MODEL_NAME in .env, or pick the model later
+echo from the UI/CLI model switcher.
+echo.
+set "MODEL_READY=1"
+goto :after_model_wait
 :model_server_launched
 echo Waiting for model server on 127.0.0.1:%MODEL_PORT% ...
 set "MODEL_READY=0"
@@ -146,7 +186,12 @@ if "%MODEL_READY%"=="0" (
     pause
     exit /b 1
 )
-echo Model server is up.
+:after_model_wait
+if /i "%RESOLVED_BACKEND%"=="ollama" (
+    echo Ollama backend confirmed ready.
+) else (
+    echo Model server is up.
+)
 rem ----------------------- step 2: launch agent API ----------------------
 where py >nul 2>nul
 if errorlevel 1 (

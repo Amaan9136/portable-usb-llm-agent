@@ -7,6 +7,9 @@
 <link rel="preload" href="/fonts/SpaceGrotesk.ttf" as="font" type="font/ttf" crossorigin>
 <link rel="preload" href="/fonts/Inter.ttf" as="font" type="font/ttf" crossorigin>
 <link rel="stylesheet" href="/tailwind.css">
+<!-- Font Awesome Free, vendored locally under ui/vendor/ - no CDN. -->
+<link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+<link rel="stylesheet" href="/styles/app.css">
 <link rel="icon" href="data:,">
 </head>
 <body class="bg-void text-starlight font-body h-screen overflow-hidden">
@@ -17,21 +20,27 @@
 
   <header class="flex items-center justify-between px-3 sm:px-4 h-12 border-b border-line bg-abyss/80 backdrop-blur shrink-0">
     <div class="flex items-center gap-2 sm:gap-3 min-w-0">
-      <button id="btnToggleExplorer" class="md:hidden shrink-0 px-2 py-1 text-xs rounded border border-line text-dim hover:text-starlight" aria-label="Toggle file explorer">☰</button>
+      <button id="btnToggleExplorer" class="md:hidden shrink-0 px-2 py-1 text-xs rounded border border-line text-dim hover:text-starlight" aria-label="Toggle file explorer">
+        <i class="fa-solid fa-bars" aria-hidden="true"></i>
+      </button>
       <span class="w-2 h-2 rounded-full bg-cyan animate-pulse-glow shrink-0"></span>
       <h1 class="font-display text-sm tracking-widest uppercase text-starlight hidden sm:block">Portable Agent</h1>
-      <span id="connStatus" class="text-xs text-dim font-mono truncate">connecting…</span>
+      <span id="connStatus" class="text-xs text-dim font-mono truncate flex items-center gap-1.5">connecting&hellip;</span>
     </div>
     <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
-      <button id="btnOpenProject" class="px-2 sm:px-3 py-1.5 text-xs font-mono uppercase tracking-wide rounded border border-cyan/40 text-cyan hover:bg-cyan/10 hover:border-cyan transition-colors whitespace-nowrap">
+      <button id="btnOpenProject" class="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs font-mono uppercase tracking-wide rounded border border-cyan/40 text-cyan hover:bg-cyan/10 hover:border-cyan transition-colors whitespace-nowrap">
+        <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
         <span class="hidden sm:inline">Open </span>Project
       </button>
-      <button id="btnToggleViewer" class="lg:hidden px-2 py-1.5 text-xs rounded border border-line text-dim hover:text-starlight hover:border-dim transition-colors" aria-label="Toggle viewer">◧</button>
-      <button id="btnCli" class="hidden sm:block px-3 py-1.5 text-xs font-mono uppercase tracking-wide rounded border border-line text-dim hover:text-starlight hover:border-dim transition-colors">
+      <button id="btnToggleViewer" class="lg:hidden px-2 py-1.5 text-xs rounded border border-line text-dim hover:text-starlight hover:border-dim transition-colors" aria-label="Toggle viewer">
+        <i class="fa-solid fa-table-columns" aria-hidden="true"></i>
+      </button>
+      <button id="btnCli" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono uppercase tracking-wide rounded border border-line text-dim hover:text-starlight hover:border-dim transition-colors">
+        <i class="fa-solid fa-terminal" aria-hidden="true"></i>
         CLI
       </button>
-      <button id="btnSettings" class="px-2 py-1.5 text-xs rounded border border-line text-dim hover:text-starlight hover:border-dim transition-colors">
-        ⚙
+      <button id="btnSettings" class="px-2 py-1.5 text-xs rounded border border-line text-dim hover:text-starlight hover:border-dim transition-colors" aria-label="Settings">
+        <i class="fa-solid fa-gear" aria-hidden="true"></i>
       </button>
     </div>
   </header>
@@ -47,13 +56,19 @@
           <select id="projectSelect" class="bg-transparent text-xs font-mono text-cyan border-none outline-none max-w-[7rem]">
             <option value="">No project</option>
           </select>
-          <button id="btnCloseExplorer" class="md:hidden shrink-0 text-dim hover:text-starlight text-xs px-1" aria-label="Close explorer">✕</button>
+          <button id="btnDownloadProjectZip" class="hidden text-dim hover:text-cyan text-xs px-1" title="Download whole project as ZIP" aria-label="Download project as ZIP">
+            <i class="fa-solid fa-file-zipper" aria-hidden="true"></i>
+          </button>
+          <button id="btnCloseExplorer" class="md:hidden shrink-0 text-dim hover:text-starlight text-xs px-1" aria-label="Close explorer">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
         </div>
       </div>
       <div id="fileTree" class="flex-1 overflow-y-auto py-2 px-1 text-sm font-mono">
         <p class="text-dim text-xs px-2 py-4 text-center">Open a project to browse files.</p>
       </div>
-      <button id="btnCliMobile" class="sm:hidden m-2 px-3 py-2 text-xs font-mono uppercase tracking-wide rounded border border-line text-dim hover:text-starlight transition-colors">
+      <button id="btnCliMobile" class="sm:hidden flex items-center justify-center gap-1.5 m-2 px-3 py-2 text-xs font-mono uppercase tracking-wide rounded border border-line text-dim hover:text-starlight transition-colors">
+        <i class="fa-solid fa-terminal" aria-hidden="true"></i>
         Open CLI reference
       </button>
     </aside>
@@ -92,8 +107,9 @@
 
       <div class="border-t border-line/60 bg-abyss/60 px-3 sm:px-4 py-3 shrink-0">
         <div class="flex items-end gap-2 max-w-4xl mx-auto">
-          <textarea id="taskInput" rows="1" placeholder="Describe the task…" class="flex-1 resize-none bg-nebula/40 border border-line focus:border-cyan/60 outline-none rounded-lg px-3 py-2 text-sm font-body placeholder-dim transition-colors"></textarea>
+          <textarea id="taskInput" rows="1" placeholder="Describe the task&hellip;" class="flex-1 resize-none bg-nebula/40 border border-line focus:border-cyan/60 outline-none rounded-lg px-3 py-2 text-sm font-body placeholder-dim transition-colors"></textarea>
           <button id="btnSend" class="send-btn shrink-0">
+            <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
             <span>Run</span>
           </button>
         </div>
@@ -122,7 +138,9 @@
         <span class="text-xs font-mono uppercase tracking-wider text-dim">Viewer</span>
         <div class="flex items-center gap-2 min-w-0">
           <span id="artifactFileName" class="text-xs font-mono text-cyan truncate max-w-[8rem] sm:max-w-[10rem]"></span>
-          <button id="btnCloseViewer" class="lg:hidden shrink-0 text-dim hover:text-starlight text-xs px-1" aria-label="Close viewer">✕</button>
+          <button id="btnCloseViewer" class="lg:hidden shrink-0 text-dim hover:text-starlight text-xs px-1" aria-label="Close viewer">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
         </div>
       </div>
       <div id="artifactBody" class="flex-1 overflow-auto">
@@ -135,9 +153,9 @@
 
 <div id="openProjectModal" class="modal-overlay hidden">
   <div class="modal-card">
-    <h3 class="font-display text-lg mb-4">Open a project</h3>
+    <h3 class="font-display text-lg mb-4 flex items-center gap-2"><i class="fa-solid fa-folder-open text-cyan" aria-hidden="true"></i>Open a project</h3>
     <p class="text-dim text-xs mb-4 leading-relaxed">
-      Paste the full path to a local folder. It's copied into the agent's sandboxed workspace —
+      Paste the full path to a local folder. It's copied into the agent's sandboxed workspace &mdash;
       the original folder is never modified, and the agent can only ever touch files inside the sandbox.
     </p>
     <label class="block text-xs text-dim mb-1 font-mono uppercase tracking-wide">Folder path</label>
@@ -154,7 +172,7 @@
 
 <div id="cliModal" class="modal-overlay hidden">
   <div class="modal-card !max-w-2xl">
-    <h3 class="font-display text-lg mb-3">Command-line access</h3>
+    <h3 class="font-display text-lg mb-3 flex items-center gap-2"><i class="fa-solid fa-terminal text-cyan" aria-hidden="true"></i>Command-line access</h3>
     <p class="text-dim text-xs mb-3 leading-relaxed">
       Everything this UI does is also available from a terminal, using the same running agent server.
     </p>
@@ -162,6 +180,9 @@
     <pre class="cli-block">python cli.py --task "run the test suite" --project my-app --allow-commands</pre>
     <pre class="cli-block">python cli.py --list-projects</pre>
     <pre class="cli-block">python cli.py --import "C:\path\to\folder" --name my-app</pre>
+    <pre class="cli-block">python cli.py --list-models</pre>
+    <pre class="cli-block">python cli.py --model "llama3.2:latest" --backend ollama</pre>
+    <pre class="cli-block">python cli.py --download-zip --project my-app</pre>
     <div class="flex justify-end mt-4">
       <button id="btnCloseCli" class="px-3 py-1.5 text-xs rounded border border-line text-dim hover:text-starlight transition-colors">Close</button>
     </div>
@@ -169,17 +190,59 @@
 </div>
 
 <div id="settingsModal" class="modal-overlay hidden">
-  <div class="modal-card">
-    <h3 class="font-display text-lg mb-4">Settings</h3>
+  <div class="modal-card !max-w-lg">
+    <h3 class="font-display text-lg mb-4 flex items-center gap-2"><i class="fa-solid fa-gear text-cyan" aria-hidden="true"></i>Settings</h3>
+
     <label class="block text-xs text-dim mb-1 font-mono uppercase tracking-wide">Agent server URL</label>
-    <input id="agentUrlInput" type="text" placeholder="http://127.0.0.1:8787" class="w-full bg-nebula/40 border border-line focus:border-cyan/60 outline-none rounded px-3 py-2 text-sm font-mono mb-4">
-    <div class="flex justify-end gap-2">
+    <input id="agentUrlInput" type="text" placeholder="http://127.0.0.1:8787" class="w-full bg-nebula/40 border border-line focus:border-cyan/60 outline-none rounded px-3 py-2 text-sm font-mono mb-5">
+
+    <div class="mb-1 text-xs text-dim font-mono uppercase tracking-wide flex items-center gap-1.5">
+      <i class="fa-solid fa-microchip" aria-hidden="true"></i> Model
+    </div>
+    <p class="text-dim text-xs mb-2 leading-relaxed">
+      Choose the built-in portable model, or (optional) any model Ollama reports installed &mdash;
+      local or cloud. Ollama is entirely opt-in; the portable flow keeps working either way.
+    </p>
+    <select id="modelSelect" class="model-select mb-2">
+      <option value="">Loading models&hellip;</option>
+    </select>
+    <div class="flex items-center gap-2 mb-1">
+      <button id="btnApplyModel" class="px-3 py-1.5 text-xs rounded bg-cyan/10 border border-cyan/50 text-cyan hover:bg-cyan/20 transition-colors">Use this model</button>
+      <button id="btnRefreshModels" class="px-3 py-1.5 text-xs rounded border border-line text-dim hover:text-starlight transition-colors">
+        <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div id="modelStatus"></div>
+
+    <div class="mt-5 mb-1 text-xs text-dim font-mono uppercase tracking-wide">Streaming &amp; logging</div>
+    <div class="settings-toggle-row">
+      <div>
+        <div class="settings-toggle-label"><i class="fa-solid fa-tower-broadcast text-cyan" aria-hidden="true"></i>Verbose event streaming</div>
+        <div class="settings-toggle-caption">Show every tool call, command, and reasoning step live in the chat as the agent works, not just the final answer.</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="verboseStreamToggle">
+        <span class="switch-track"></span>
+      </label>
+    </div>
+    <div class="settings-toggle-row">
+      <div>
+        <div class="settings-toggle-label"><i class="fa-solid fa-vial text-cyan" aria-hidden="true"></i>Testing phase</div>
+        <div class="settings-toggle-caption">Let the tester role run tests (pytest/npm/etc.) after changes. Turning this off also unchecks "Allow commands" for new runs.</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="testingPhaseToggle">
+        <span class="switch-track"></span>
+      </label>
+    </div>
+
+    <div class="flex justify-end gap-2 mt-5">
       <button id="btnCancelSettings" class="px-3 py-1.5 text-xs rounded border border-line text-dim hover:text-starlight transition-colors">Cancel</button>
       <button id="btnSaveSettings" class="px-3 py-1.5 text-xs rounded bg-cyan/10 border border-cyan/50 text-cyan hover:bg-cyan/20 transition-colors">Save</button>
     </div>
   </div>
 </div>
 
-<script src="/app.js"></script>
+<script type="module" src="/js/main.js"></script>
 </body>
 </html>

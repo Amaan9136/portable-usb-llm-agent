@@ -5,7 +5,11 @@ any GGUF model of your choice through llama.cpp's local
 OpenAI-compatible server, driven by a small FastAPI agent that writes
 files, runs a narrow allowlist of commands, and packages finished
 projects into ZIP artifacts - all contained inside a `workspace/`
-sandbox on your machine.
+sandbox on your machine. An **optional, opt-in** backend also lets the
+agent use a locally running [Ollama](https://ollama.com) install
+instead - any model `ollama list` shows, local or one of Ollama's
+"-cloud" models - selectable from the UI's Settings modal or the CLI,
+without touching the default portable flow.
 
 **Honest scope statement:** this is a Windows-portable project only,
 unless you separately add Linux/macOS `llama-server` binaries to a
@@ -57,15 +61,18 @@ Portable USB LLM Agent/
 ├── models/                  # place your .gguf model here (not included)
 ├── runtime/windows/         # place llama-server.exe here (not needed if using an installed llama.exe)
 ├── agent/
-│   ├── app.py               # FastAPI app: /health, /agent, /agent/stream, /projects, /tree, /file, /artifacts
+│   ├── app.py               # FastAPI app: /health, /agent, /agent/stream, /models, /models/select, /projects, /tree, /file, /explorer/download, /artifacts
 │   ├── config.py            # .env loader, shared by agent + docs
 │   ├── tools.py             # sandboxed file/command/zip/project-import tools
 │   ├── schemas.py           # Pydantic request/response models
+│   ├── ollama_client.py     # optional Ollama model discovery (HTTP API, CLI fallback)
 │   └── system_prompt.txt    # sequential-role agent instructions
 │   └── requirements.txt
 ├── ui/                       # cosmic-neon web UI, served by the agent itself
 │   ├── index.html
-│   ├── app.js                # SSE client, file explorer, chat, project management
+│   ├── js/                    # ES modules: state, api, streaming, chat, explorer, models, settings...
+│   ├── styles/app.css           # component styles (action timeline, modals, toggles)
+│   ├── vendor/fontawesome/       # Font Awesome Free, vendored locally - no CDN
 │   ├── tailwind.css             # compiled Tailwind CSS v4 (no CDN, no build step needed to run)
 │   └── fonts/                 # self-hosted Space Grotesk / Inter / JetBrains Mono
 ├── cli.py                     # terminal client for the same agent API the UI uses
