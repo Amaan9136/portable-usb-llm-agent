@@ -25,6 +25,127 @@ size, GPU layers, thread count, backend flags) is configured through a
 single `.env` file - nothing is hardcoded to a specific model. See
 `.env.example` for the full list of keys.
 
+## What it can do
+
+- **Sequential-role agent pipeline** - every task is worked through five
+  labeled roles shown live in the UI header (Planner → Implementer →
+  Reviewer → Tester → Packager), so you can see which phase the model is
+  in rather than staring at a single opaque "thinking" spinner.
+- **Sandboxed file operations** - list, read, and write files inside the
+  imported project's `workspace/` sandbox only; the tool layer rejects
+  absolute paths, drive letters, and reserved names so the agent can't
+  reach outside the sandbox.
+- **Project import** - paste any local folder path in "Open a project"
+  and it's copied into the sandboxed workspace under its own project
+  name; the original folder on disk is never modified.
+- **Optional command execution** - with "Allow commands" checked, the
+  agent can run a narrow allowlisted set of shell commands (e.g. `python
+  file.py`) inside the sandbox to actually test the code it writes,
+  surfacing exit codes and stdout/stderr in the timeline.
+- **Overwrite protection** - "Allow overwrite" gates whether the agent
+  can replace existing files; off by default so re-running a task on the
+  same project won't clobber your work without asking.
+- **ZIP artifact packaging** - "Package ZIP" bundles the finished
+  project into a downloadable artifact via the Packager role, landing in
+  `artifacts/`.
+- **Live streamed action timeline** - every run shows each tool call as
+  it happens (`Listed`, `Wrote`, `Ran`, ...) with expandable file
+  contents/diffs, a token/speed/duration footer, and a "changed files"
+  strip you can open directly in the right-hand Viewer pane.
+- **Two interchangeable model backends** - the default **Portable
+  (llama.cpp)** backend runs a local GGUF model with no install and no
+  network calls, or you can opt into a locally running **Ollama**
+  install instead, picking any locally-pulled model or one of Ollama's
+  `-cloud` models from the same Settings dropdown, without touching the
+  portable flow.
+- **File explorer + viewer** - the left Explorer pane mirrors the live
+  project tree as the agent creates/edits files; the right Viewer pane
+  shows the currently selected file's contents, auto-updating as the
+  agent works.
+- **CLI client** - `cli.py` talks to the same agent API as the web UI,
+  for scripting or terminal-only use.
+- **Cross-platform launcher** - `start_ui.py` runs the agent + UI (not
+  the portable llama.cpp server) on any OS, useful if you're driving the
+  agent against an Ollama backend on macOS/Linux.
+- **Truthfulness guardrails** - responses are checked against what tool
+  calls actually happened; the agent won't claim a file was written or a
+  test passed if the corresponding tool call didn't actually run or
+  succeed (see the "No tests were run..." / "No artifact created..."
+  messaging pattern in the screenshots below).
+
+## Screenshots
+
+<table>
+<tr>
+<td width="50%">
+
+**Chat-driven task execution**
+Describe a task in plain English; the agent runs it as a sequence of
+tool calls (list → write → write) and reports exactly which files were
+actually changed, refusing to claim more than the tool results support.
+<br><br>
+<img src="screenshots/01-chat-run-task.png" alt="Running a task from the chat box, showing the live action timeline and changed-files summary">
+
+</td>
+<td width="50%">
+
+**Importing a project**
+"Open a project" copies a local folder path into the sandboxed
+workspace under a project name of your choice - the source folder on
+disk is never touched.
+<br><br>
+<img src="screenshots/02-open-project.png" alt="Open a project modal for importing a local folder path into the sandbox">
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Model selection**
+The Settings modal lists the built-in Portable (llama.cpp) backend
+alongside every Ollama model the local install reports - local and
+`-cloud` models side by side, switchable without leaving the app.
+<br><br>
+<img src="screenshots/03-model-settings.png" alt="Settings modal showing Portable llama.cpp and Ollama local/cloud model options">
+
+</td>
+<td width="50%">
+
+**Runs entirely on your hardware**
+Since inference happens through a local llama.cpp/Ollama server, GPU
+and memory usage stay on your machine - no data leaves your device
+unless you deliberately pick an Ollama `-cloud` model.
+<br><br>
+<img src="screenshots/04-gpu-task-manager.png" alt="Windows Task Manager showing local GPU and memory usage while the agent runs">
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Multi-file, multi-step generation**
+A single instruction ("Build a calculator, remove the sum.py") can
+fan out into several tool calls in one run - here writing
+`calculator.py`, `__init__.py`, and a `README.md` together, each shown
+with its full generated content.
+<br><br>
+<img src="screenshots/05-multi-file-pipeline.png" alt="A single task producing calculator.py, __init__.py, and README.md in one run">
+
+</td>
+<td width="50%">
+
+**Command execution and honest failure reporting**
+With "Allow commands" on, the agent can run allowlisted shell commands
+inside the sandbox to act on its own output - and when a command fails
+(here, a script referencing a file that doesn't exist), the agent
+reports the real exit code and error instead of pretending it worked.
+<br><br>
+<img src="screenshots/06-command-execution.png" alt="A failed command execution with exit code 2, correctly reported instead of hidden">
+
+</td>
+</tr>
+</table>
+
 ## What's in the box vs. what you provide
 
 | Provided in this ZIP | You download separately |
@@ -58,6 +179,7 @@ before your first run.
 
 ```
 Portable USB LLM Agent/
+├── screenshots/              # UI screenshots referenced in this README
 ├── models/                  # place your .gguf model here (not included)
 ├── runtime/windows/         # place llama-server.exe here (not needed if using an installed llama.exe)
 ├── agent/
