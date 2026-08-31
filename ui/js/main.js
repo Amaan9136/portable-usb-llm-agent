@@ -12,6 +12,7 @@ import { addSystemMessage } from "./chat.js";
 import { openModal, closeModal, wireOverlayDismiss } from "./modals.js";
 import { loadModels, applySelectedModel } from "./models.js";
 import { initSettingsToggles } from "./settings.js";
+import { mountModals } from "./components/mount.js";
 
 const projectSelect = el("projectSelect");
 
@@ -135,6 +136,7 @@ function wireComposer() {
 }
 
 // ---------- init ----------
+mountModals();
 initStarfield();
 wireHeader();
 wireDrawers();

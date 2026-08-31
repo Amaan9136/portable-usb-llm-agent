@@ -6,6 +6,7 @@ export function initStarfield() {
   const canvas = el("starfield");
   const ctx = canvas.getContext("2d");
   let stars = [];
+  let rafId = null;
 
   function resize() {
     canvas.width = window.innerWidth;
@@ -29,10 +30,29 @@ export function initStarfield() {
       ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
       ctx.fill();
     }
-    requestAnimationFrame(draw);
+    rafId = requestAnimationFrame(draw);
   }
 
-  window.addEventListener("resize", resize);
+  function start() {
+    if (rafId === null) rafId = requestAnimationFrame(draw);
+  }
+  function stop() {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  }
+
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(resize, 150);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stop();
+    else start();
+  });
+
   resize();
-  requestAnimationFrame(draw);
+  start();
 }

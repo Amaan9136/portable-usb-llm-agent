@@ -6,10 +6,10 @@ import { el } from "./dom.js";
 import { state, setSetting } from "./state.js";
 import { onHealth } from "./connection.js";
 
-const verboseToggle = el("verboseStreamToggle");
-const testingToggle = el("testingPhaseToggle");
-
 export function initSettingsToggles() {
+  const verboseToggle = el("verboseStreamToggle");
+  const testingToggle = el("testingPhaseToggle");
+
   verboseToggle.checked = state.verboseStream;
   testingToggle.checked = state.testingPhase;
 

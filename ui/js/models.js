@@ -6,10 +6,9 @@ import { el, escapeHtml, icon } from "./dom.js";
 import * as api from "./api.js";
 import { state, setSetting } from "./state.js";
 
-const modelSelect = el("modelSelect");
-const modelStatus = el("modelStatus");
-
 export async function loadModels() {
+  const modelSelect = el("modelSelect");
+  const modelStatus = el("modelStatus");
   modelSelect.innerHTML = `<option value="">Loading models&hellip;</option>`;
   try {
     const data = await api.models();
@@ -56,6 +55,8 @@ export async function loadModels() {
 }
 
 export async function applySelectedModel() {
+  const modelSelect = el("modelSelect");
+  const modelStatus = el("modelStatus");
   const [backend, ...rest] = (modelSelect.value || "").split("::");
   const modelName = rest.join("::");
   if (!backend) return;

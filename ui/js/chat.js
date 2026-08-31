@@ -12,6 +12,16 @@ import { state } from "./state.js";
 
 const chatLog = el("chatLog");
 
+let scrollQueued = false;
+function queueScrollToBottom() {
+  if (scrollQueued) return;
+  scrollQueued = true;
+  requestAnimationFrame(() => {
+    chatLog.scrollTop = chatLog.scrollHeight;
+    scrollQueued = false;
+  });
+}
+
 function clearWelcome() {
   if (chatLog.querySelector(".signature-orb")) chatLog.innerHTML = "";
 }
@@ -22,7 +32,7 @@ export function addUserMessage(text) {
   div.className = "msg msg-user";
   div.innerHTML = `<div class="msg-bubble msg-bubble-user">${escapeHtml(text)}</div>`;
   chatLog.appendChild(div);
-  chatLog.scrollTop = chatLog.scrollHeight;
+  queueScrollToBottom();
 }
 
 export function addSystemMessage(text) {
@@ -31,7 +41,7 @@ export function addSystemMessage(text) {
   div.className = "msg msg-system";
   div.innerHTML = `<div class="msg-system-text">${icon("fa-solid fa-circle-info")} ${escapeHtml(text)}</div>`;
   chatLog.appendChild(div);
-  chatLog.scrollTop = chatLog.scrollHeight;
+  queueScrollToBottom();
 }
 
 export function startAgentMessage(meta) {
@@ -52,7 +62,7 @@ export function startAgentMessage(meta) {
       <div class="agent-perf hidden"></div>
     </div>`;
   chatLog.appendChild(div);
-  chatLog.scrollTop = chatLog.scrollHeight;
+  queueScrollToBottom();
   div._stepCount = 0;
   return div;
 }
@@ -147,7 +157,7 @@ export function addToolEvent(container, role, tool, args, result) {
     row.querySelector(".action-step-chevron").innerHTML = icon(isOpen ? "fa-solid fa-chevron-right" : "fa-solid fa-chevron-down");
   });
 
-  chatLog.scrollTop = chatLog.scrollHeight;
+  queueScrollToBottom();
 
   if (tool === "write_file" && ok) {
     flashArtifact(args.relative_path, args.content);
@@ -197,7 +207,7 @@ function renderStepDetail(tool, args, result) {
 export function appendAgentToken(container, text) {
   const textEl = container.querySelector(".agent-text");
   textEl.textContent += text;
-  chatLog.scrollTop = chatLog.scrollHeight;
+  queueScrollToBottom();
 }
 
 export function showPerf(container, payload) {

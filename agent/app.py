@@ -44,13 +44,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Portable USB LLM Agent")
 app = FastAPI(title="Portable USB LLM Agent Agent", version="1.0.0")
-# Loopback-only UI talks to this API from the same machine (a file:// or
-# 127.0.0.1-served page). CORS is opened for local origins only - this
-# process never binds anywhere but 127.0.0.1 (see SECURITY.md), so this
-# does not expose anything to the network.
+# CORS is opened for all origins so the UI can be served from anywhere
+# (a different host/port, a packaged app shell, etc.) and still reach
+# this API. The process still only ever binds to 127.0.0.1 (see
+# SECURITY.md), so this does not expose the agent to the network - it
+# only affects which pages a browser will let call it.
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://(127\.0\.0\.1|localhost)(:\d+)?",
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

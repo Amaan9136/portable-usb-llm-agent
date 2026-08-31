@@ -1,11 +1,9 @@
 """
 Secure, containment-first tool implementations.
-
 Every function here is defensive by default: it assumes the caller
 (including the LLM) is untrusted input, not a cooperative partner.
 Nothing here reads environment variables, credentials, SSH keys, or any
 path outside WORKSPACE/ARTIFACTS. Deletion is permanently disabled.
-
 Threat model assumptions (see SECURITY.md for the full writeup):
   - The model may hallucinate or be adversarially prompted (e.g. via
     content it reads from a file) to attempt path traversal, absolute
@@ -13,9 +11,7 @@ Threat model assumptions (see SECURITY.md for the full writeup):
   - All such attempts must fail closed with a clear error, not a
     partial/undefined action.
 """
-
 from __future__ import annotations
-
 import json
 import os
 import re
@@ -24,7 +20,6 @@ import subprocess
 import time
 import zipfile
 from pathlib import Path, PureWindowsPath
-
 from config import (
     ARTIFACTS,
     COMMAND_TIMEOUT_SECONDS,
@@ -37,14 +32,12 @@ from config import (
     PROJECTS_META,
     WORKSPACE,
 )
-
 # Only these executables may ever be invoked. Checked against the raw
 # first argument BEFORE any path resolution, so "python" cannot be
 # smuggled in as "C:\Windows\System32\python.exe" to dodge the allowlist
 # semantics - we still only accept the bare command name and let the OS
 # resolve it from PATH, which keeps behavior predictable and auditable.
 ALLOWED_COMMANDS = {"python", "pytest", "npm", "node", "git"}
-
 # Explicitly called out in the spec as must-block, even though they're
 # not in ALLOWED_COMMANDS anyway (defense in depth - this list exists so
 # a future edit to ALLOWED_COMMANDS can't accidentally re-admit these,
@@ -62,7 +55,6 @@ EXPLICITLY_BLOCKED = {
     "choco", "winget", "scoop",
     "netsh", "netstat", "ping", "nslookup", "telnet",
 }
-
 # Windows reserved device names - creating a file with one of these
 # stems (with or without an extension) has special OS meaning and must
 # be rejected regardless of the requested extension.
@@ -71,12 +63,8 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
 }
-
-
 class PathSecurityError(ValueError):
     """Raised when a requested path fails containment checks."""
-
-
 def _reject_reserved_names(relative_path: str) -> None:
     for part in PureWindowsPath(relative_path).parts:
         stem = part.split(".")[0].upper()
@@ -84,8 +72,6 @@ def _reject_reserved_names(relative_path: str) -> None:
             raise PathSecurityError(
                 f"Blocked: '{part}' is a reserved Windows device name."
             )
-
-
 def _reject_absolute_or_drive(relative_path: str) -> None:
     # Reject POSIX-absolute ("/etc/passwd"), Windows-absolute
     # ("C:\\Windows"), UNC paths ("\\\\server\\share"), and drive-relative
@@ -94,33 +80,24 @@ def _reject_absolute_or_drive(relative_path: str) -> None:
     # multiple signals explicitly.
     if os.path.isabs(relative_path):
         raise PathSecurityError("Blocked: absolute paths are not allowed.")
-
     win_path = PureWindowsPath(relative_path)
     if win_path.drive or win_path.root:
         raise PathSecurityError("Blocked: drive letters and rooted paths are not allowed.")
-
     if relative_path.startswith("\\\\") or relative_path.startswith("//"):
         raise PathSecurityError("Blocked: UNC-style paths are not allowed.")
-
     if re.match(r"^[a-zA-Z]:", relative_path):
         raise PathSecurityError("Blocked: drive-relative paths are not allowed.")
-
-
 def safe_workspace_path(relative_path: str) -> Path:
     """Resolve relative_path against WORKSPACE and guarantee the result
     stays inside WORKSPACE, including after symlink resolution.
-
     Raises PathSecurityError on any traversal, absolute-path, drive,
     UNC, or reserved-name attempt.
     """
     if not relative_path or not relative_path.strip():
         raise PathSecurityError("Blocked: empty path.")
-
     _reject_absolute_or_drive(relative_path)
     _reject_reserved_names(relative_path)
-
     candidate = (WORKSPACE / relative_path).resolve()
-
     # resolve() follows symlinks. If a symlink inside workspace points
     # outside it, the resolved path will land outside WORKSPACE and this
     # check catches it - same mechanism handles plain ".." traversal.
@@ -130,67 +107,50 @@ def safe_workspace_path(relative_path: str) -> Path:
         raise PathSecurityError(
             "Blocked: path escapes the workspace directory."
         ) from exc
-
     return candidate
-
-
 def _truncate(text: str, limit: int = MAX_TOOL_OUTPUT_BYTES) -> str:
     encoded = text.encode("utf-8", errors="replace")
     if len(encoded) <= limit:
         return text
     return encoded[-limit:].decode("utf-8", errors="replace")
-
-
 def list_files(relative_path: str = ".") -> dict:
     try:
         path = safe_workspace_path(relative_path)
     except PathSecurityError as exc:
         return {"ok": False, "error": str(exc)}
-
     if not path.exists():
         return {"ok": False, "error": "Path does not exist."}
-
     if path.is_file():
         return {"ok": True, "files": [str(path.relative_to(WORKSPACE))]}
-
     files = [
         str(item.relative_to(WORKSPACE))
         for item in sorted(path.rglob("*"))
         if item.is_file() and ".git" not in item.parts
     ]
     return {"ok": True, "files": files[:500], "truncated": len(files) > 500}
-
-
 def read_file(relative_path: str) -> dict:
     try:
         path = safe_workspace_path(relative_path)
     except PathSecurityError as exc:
         return {"ok": False, "error": str(exc)}
-
     if not path.is_file():
         return {"ok": False, "error": "File does not exist."}
-
     if path.stat().st_size > MAX_FILE_READ_BYTES:
         return {
             "ok": False,
             "error": f"File exceeds {MAX_FILE_READ_BYTES} byte read limit.",
         }
-
     return {"ok": True, "content": path.read_text(encoding="utf-8", errors="replace")}
-
-
 def write_file(relative_path: str, content: str, allow_overwrite: bool = False) -> dict:
     try:
         path = safe_workspace_path(relative_path)
     except PathSecurityError as exc:
         return {"ok": False, "error": str(exc)}
-
     if len(content.encode("utf-8", errors="replace")) > MAX_FILE_WRITE_BYTES:
         return {
             "ok": False,
             "error": f"Content exceeds {MAX_FILE_WRITE_BYTES} byte write limit.",
         }
-
     if path.exists() and not allow_overwrite:
         return {
             "ok": False,
@@ -199,12 +159,9 @@ def write_file(relative_path: str, content: str, allow_overwrite: bool = False) 
                 "allow_overwrite flag to be true."
             ),
         }
-
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return {"ok": True, "written": str(path.relative_to(WORKSPACE))}
-
-
 def run_command(
     command: list[str],
     relative_cwd: str = ".",
@@ -215,29 +172,22 @@ def run_command(
             "ok": False,
             "error": "Blocked: run_command requires allow_commands: true on the request.",
         }
-
     if not command or not isinstance(command, list):
         return {"ok": False, "error": "Command must be a non-empty list."}
-
     executable = command[0].strip().lower()
-
     if executable in EXPLICITLY_BLOCKED:
         return {"ok": False, "error": f"Blocked command: '{executable}' is explicitly disallowed."}
-
     if executable not in ALLOWED_COMMANDS:
         return {
             "ok": False,
             "error": f"Blocked command: '{executable}'. Allowed: {sorted(ALLOWED_COMMANDS)}",
         }
-
     try:
         cwd = safe_workspace_path(relative_cwd)
     except PathSecurityError as exc:
         return {"ok": False, "error": str(exc)}
-
     if not cwd.is_dir():
         return {"ok": False, "error": "Working directory does not exist."}
-
     try:
         completed = subprocess.run(
             command,
@@ -263,17 +213,13 @@ def run_command(
             "ok": False,
             "error": f"Executable '{executable}' not found on PATH.",
         }
-
-
 def create_zip(source_relative_path: str, artifact_name: str) -> dict:
     try:
         source = safe_workspace_path(source_relative_path)
     except PathSecurityError as exc:
         return {"ok": False, "error": str(exc)}
-
     if not source.exists():
         return {"ok": False, "error": "Source path does not exist."}
-
     # artifact_name is sanitized independently of workspace path rules:
     # it must resolve to a plain filename inside ARTIFACTS, never a
     # nested path. Use PureWindowsPath (not the platform-default Path)
@@ -285,20 +231,16 @@ def create_zip(source_relative_path: str, artifact_name: str) -> dict:
     win_name = PureWindowsPath(artifact_name)
     if win_name.drive or win_name.root:
         return {"ok": False, "error": "Invalid artifact name: absolute or rooted names are not allowed."}
-
     safe_stem = win_name.name
     if not safe_stem or safe_stem in (".", "..") or len(win_name.parts) > 1:
         return {"ok": False, "error": "Invalid artifact name: must be a plain filename, no path separators."}
-
     if not safe_stem.lower().endswith(".zip"):
         safe_stem += ".zip"
-
     output = (ARTIFACTS / safe_stem).resolve()
     try:
         output.relative_to(ARTIFACTS)
     except ValueError:
         return {"ok": False, "error": "Invalid artifact name."}
-
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         if source.is_file():
             archive.write(source, source.name)
@@ -306,26 +248,17 @@ def create_zip(source_relative_path: str, artifact_name: str) -> dict:
             for file in source.rglob("*"):
                 if file.is_file() and ".git" not in file.parts:
                     archive.write(file, file.relative_to(source.parent))
-
     return {"ok": True, "artifact": output.name}
-
-
 def delete_path(*_args, **_kwargs) -> dict:
     """Deletion is deliberately and permanently disabled. See SECURITY.md."""
     return {
         "ok": False,
         "error": "Deletion is deliberately disabled. Delete files manually after review.",
     }
-
-
 _PROJECT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$")
-
-
 class ProjectImportError(ValueError):
     """Raised when importing an external folder into workspace/ fails
     validation - never a partial/silent failure."""
-
-
 def _sanitize_project_name(name: str) -> str:
     name = (name or "").strip()
     if not name:
@@ -337,8 +270,6 @@ def _sanitize_project_name(name: str) -> str:
         )
     _reject_reserved_names(name)
     return name
-
-
 def _load_projects_meta() -> dict:
     if not PROJECTS_META.is_file():
         return {"projects": {}}
@@ -346,13 +277,9 @@ def _load_projects_meta() -> dict:
         return json.loads(PROJECTS_META.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {"projects": {}}
-
-
 def _save_projects_meta(meta: dict) -> None:
     PROJECTS_META.parent.mkdir(parents=True, exist_ok=True)
     PROJECTS_META.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-
-
 def list_projects() -> dict:
     meta = _load_projects_meta()
     projects = []
@@ -367,8 +294,6 @@ def list_projects() -> dict:
             }
         )
     return {"ok": True, "projects": projects}
-
-
 def import_project(source_path: str, project_name: str | None = None) -> dict:
     """Copy an external local folder into workspace/<project_name>/ so
     the agent's containment guarantee (never touch anything outside
@@ -380,31 +305,25 @@ def import_project(source_path: str, project_name: str | None = None) -> dict:
         source = source.resolve(strict=True)
     except (OSError, RuntimeError) as exc:
         return {"ok": False, "error": f"Source folder not found: {exc}"}
-
     if not source.is_dir():
         return {"ok": False, "error": "Source path is not a directory."}
-
     try:
         source.relative_to(WORKSPACE)
         return {"ok": False, "error": "Source is already inside workspace/."}
     except ValueError:
         pass
-
     name = project_name or source.name
     try:
         name = _sanitize_project_name(name)
     except ProjectImportError as exc:
         return {"ok": False, "error": str(exc)}
-
     dest = (WORKSPACE / name).resolve()
     try:
         dest.relative_to(WORKSPACE)
     except ValueError:
         return {"ok": False, "error": "Invalid project name."}
-
     if dest.exists():
         return {"ok": False, "error": f"A project named '{name}' already exists."}
-
     file_count = 0
     total_bytes = 0
     for item in source.rglob("*"):
@@ -426,25 +345,19 @@ def import_project(source_path: str, project_name: str | None = None) -> dict:
                     "ok": False,
                     "error": f"Folder exceeds the {MAX_IMPORT_TOTAL_BYTES // 1_000_000} MB import limit.",
                 }
-
     def _ignore(dirpath: str, names: list[str]) -> set[str]:
         return {n for n in names if n in IMPORT_SKIP_DIR_NAMES}
-
     try:
         shutil.copytree(source, dest, ignore=_ignore)
     except OSError as exc:
         return {"ok": False, "error": f"Copy failed: {exc}"}
-
     meta = _load_projects_meta()
     meta.setdefault("projects", {})[name] = {
         "source_path": str(source),
         "imported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     _save_projects_meta(meta)
-
     return {"ok": True, "project": name, "files_imported": file_count}
-
-
 def file_tree(relative_path: str = ".") -> dict:
     """Like list_files, but returns a nested tree shape the UI's file
     explorer can render directly instead of a flat path list."""
@@ -452,10 +365,8 @@ def file_tree(relative_path: str = ".") -> dict:
         path = safe_workspace_path(relative_path)
     except PathSecurityError as exc:
         return {"ok": False, "error": str(exc)}
-
     if not path.exists():
         return {"ok": False, "error": "Path does not exist."}
-
     def _build(node: Path) -> dict:
         entry = {"name": node.name or str(WORKSPACE.name), "path": str(node.relative_to(WORKSPACE))}
         if node.is_dir():
@@ -480,26 +391,19 @@ def file_tree(relative_path: str = ".") -> dict:
             except OSError:
                 entry["size"] = 0
         return entry
-
     return {"ok": True, "tree": _build(path)}
-
-
 def safe_artifact_path(filename: str) -> Path:
     """Used by the API's download endpoint. Only serves .zip files that
     live directly inside ARTIFACTS, never a subdirectory or traversal."""
     if not filename or "/" in filename or "\\" in filename:
         raise PathSecurityError("Blocked: filename must not contain path separators.")
-
     if not filename.lower().endswith(".zip"):
         raise PathSecurityError("Blocked: only .zip files may be downloaded.")
-
     candidate = (ARTIFACTS / filename).resolve()
     try:
         candidate.relative_to(ARTIFACTS)
     except ValueError as exc:
         raise PathSecurityError("Blocked: path escapes the artifacts directory.") from exc
-
     if not candidate.is_file():
         raise FileNotFoundError("Artifact does not exist.")
-
     return candidate
