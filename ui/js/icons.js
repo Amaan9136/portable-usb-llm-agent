@@ -1,6 +1,6 @@
 // Central place that maps a filename (or a concept, like "tool role") to a
 // Font Awesome icon class string. Every icon in the UI is rendered from
-// the locally vendored ui/vendor/fontawesome/css/all.min.css - nothing here
+// the local ui/fontawesome/css/all.min.css - nothing here
 // ever reaches out to a CDN.
 import { FILE_ICON_MAP, DEFAULT_FILE_ICON } from "./config.js";
 import { icon } from "./dom.js";

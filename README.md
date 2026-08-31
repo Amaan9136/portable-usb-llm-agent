@@ -72,7 +72,7 @@ Portable USB LLM Agent/
 │   ├── index.html
 │   ├── js/                    # ES modules: state, api, streaming, chat, explorer, models, settings...
 │   ├── styles/app.css           # component styles (action timeline, modals, toggles)
-│   ├── vendor/fontawesome/       # Font Awesome Free, vendored locally - no CDN
+│   ├── fontawesome/              # Font Awesome Free, local - no CDN
 │   ├── tailwind.css             # compiled Tailwind CSS v4 (no CDN, no build step needed to run)
 │   └── fonts/                 # self-hosted Space Grotesk / Inter / JetBrains Mono
 ├── cli.py                     # terminal client for the same agent API the UI uses

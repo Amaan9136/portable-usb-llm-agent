@@ -292,7 +292,6 @@ works everywhere. To offload to a GPU:
    nvidia-smi -l 1
    ```
    This refreshes GPU stats every second - watch the memory-used column.
-   (Use your vendor's equivalent tool for AMD/Intel GPUs.)
 
 2. In `.env`, increase `GPU_LAYERS` by a small increment (e.g. 2–4)
    from its current value, restart `Start-All.bat` (or just `Start-Model.bat`
