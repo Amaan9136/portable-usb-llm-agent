@@ -575,3 +575,7 @@
   background: var(--color-line);
   border-radius: 999px;
 }
+optgroup, optgroup option{
+  background-color: var(--color-abyss);
+  color: var(--color-starlight);
+}
